@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Canonical focus visual style: 2px outer thickness, 1px inner thickness, -2px margin (no layout impact) -->
+    <Style x:Key="NexusFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border BorderBrush="{DynamicResource NexusFocusOuter}"
+                            BorderThickness="2"
+                            CornerRadius="4"
+                            Margin="-2"
+                            IsHitTestVisible="False">
+                        <Border BorderBrush="{DynamicResource NexusFocusInner}"
+                                BorderThickness="1"
+                                CornerRadius="2"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

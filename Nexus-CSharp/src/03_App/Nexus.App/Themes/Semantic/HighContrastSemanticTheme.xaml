@@ -1,0 +1,86 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Owner-approved minimal Harness fallback: native system contrast palette. -->
+    <SolidColorBrush x:Key="DshBgBaseBrush" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="DshTextPrimaryBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="DshBorderL2Brush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSurfaceCanvas" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusPdfTabStripBackground" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="NexusPdfPageBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSurfaceBase" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSurfaceRaised" Color="{DynamicResource {x:Static SystemColors.ControlLightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSurfaceOverlay" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusBackdropOverlay" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonRest" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonHover" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonPressed" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderBackground" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderBorder" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteBackground" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteBorder" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSurfaceSunken" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="NexusForegroundPrimary" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusForegroundSecondary" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusForegroundDisabled" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusForegroundOnAccent" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusStrokeSubtle" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="NexusStrokeDefault" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="NexusContentBorder" Color="{DynamicResource {x:Static SystemColors.ControlDarkColorKey}}"/>
+    <SolidColorBrush x:Key="NexusModalBackdrop" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusComparisonDivider" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusComparisonHandle" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusComparisonGlyph" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusRoundActionHover" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusRoundActionPressed" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusStrokeStrong" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusStrokeFocus" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusAccentPrimary" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusAccentRest" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusAccentHover" Color="{DynamicResource {x:Static SystemColors.HotTrackColorKey}}"/>
+    <SolidColorBrush x:Key="NexusAccentPressed" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusAccentSelected" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusInfoForeground" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusInfoBackground" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusInfoStroke" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSuccessForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSuccessBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSuccessStroke" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusWarningForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusWarningBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusWarningStroke" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusErrorForeground" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusErrorBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusErrorStroke" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusFocusOuter" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusFocusInner" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusScrim" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <!-- Temporary Stage 2.1 compatibility shim; remove with the dedicated alias layer. -->
+    <SolidColorBrush x:Key="NexusBrushStatusInfo" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <!-- Preserve subtle overlay alpha while honoring the system contrast palette. -->
+    <SolidColorBrush x:Key="NexusImageNavigationForeground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationRest" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" Opacity="0.3137254901960784"/>
+    <SolidColorBrush x:Key="NexusImageNavigationStroke" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" Opacity="0.1254901960784314"/>
+    <SolidColorBrush x:Key="NexusImageNavigationHover" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" Opacity="0.396078431372549"/>
+    <SolidColorBrush x:Key="NexusImageNavigationHoverStroke" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" Opacity="0.1568627450980392"/>
+    <SolidColorBrush x:Key="NexusImageNavigationPressed" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" Opacity="0.5215686274509804"/>
+    <SolidColorBrush x:Key="NexusImageNavigationDisabled" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" Opacity="0.207843137254902"/>
+    <SolidColorBrush x:Key="NexusImageNavigationDisabledStroke" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" Opacity="0.0823529411764706"/>
+
+    <!-- DSH Send Button Semantic Brushes (High Contrast Theme) -->
+    <SolidColorBrush x:Key="DshSendButtonActiveBgBrush" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="DshSendButtonHoverBgBrush" Color="{DynamicResource {x:Static SystemColors.HotTrackColorKey}}"/>
+    <SolidColorBrush x:Key="DshSendButtonDisabledBgBrush" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+    <SolidColorBrush x:Key="DshSendButtonActiveIconBrush" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+    <SolidColorBrush x:Key="DshSendButtonDisabledIconBrush" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+    <SolidColorBrush x:Key="DshSendButtonBorderBrush" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+
+    <!-- Nexus Syntax Highlighting Tokens (High Contrast) -->
+    <SolidColorBrush x:Key="NexusSyntaxKeywordBrush" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSyntaxStringBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSyntaxCommentBrush" Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSyntaxNumberBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSyntaxTypeBrush" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+    <SolidColorBrush x:Key="NexusSyntaxPlainTextBrush" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+</ResourceDictionary>

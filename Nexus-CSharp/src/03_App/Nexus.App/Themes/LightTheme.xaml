@@ -1,0 +1,59 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Tokens/PrimitiveTokens.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource NexusPrimitiveColorEEF4F9}"/>
+    <SolidColorBrush x:Key="PageBackgroundBrush" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="SurfaceSecondaryBrush" Color="{StaticResource NexusPrimitiveColorF8FAFC}"/>
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="InputBackgroundBrush" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource NexusPrimitiveColorEEF1F3}"/>
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource NexusPrimitiveColorEEF1F3}"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource NexusPrimitiveColor0F172A}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource NexusPrimitiveColor64748B}"/>
+    <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource NexusPrimitiveColor2563EB}"/>
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource NexusPrimitiveColor106EBE}"/>
+    <SolidColorBrush x:Key="PrimaryActionBrush" Color="{StaticResource NexusPrimitiveColor0067C0}"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource NexusPrimitiveColorEF4444}"/>
+    <SolidColorBrush x:Key="CaptionButtonHoverBrush" Color="{StaticResource NexusPrimitiveColor0F000000}"/>
+    <SolidColorBrush x:Key="CaptionButtonPressedBrush" Color="{StaticResource NexusPrimitiveColor1A000000}"/>
+    <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="{StaticResource NexusPrimitiveColorC42B1C}"/>
+    <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="{StaticResource NexusPrimitiveColorB22415}"/>
+    <RadialGradientBrush x:Key="AIWorkspaceWelcomeGlowBrush">
+        <GradientStop Color="{StaticResource NexusPrimitiveColor402563EB}" Offset="0"/>
+        <GradientStop Color="{StaticResource NexusPrimitiveColor102563EB}" Offset="0.55"/>
+        <GradientStop Color="{StaticResource NexusPrimitiveColor002563EB}" Offset="1"/>
+    </RadialGradientBrush>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOffBackgroundBrush" Color="{StaticResource NexusPrimitiveColor00FFFFFF}"/>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOnBackgroundBrush" Color="{StaticResource NexusPrimitiveColor182563EB}"/>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOffBorderBrush" Color="{StaticResource NexusPrimitiveColor8094A3B8}"/>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOnBorderBrush" Color="{StaticResource NexusPrimitiveColor2563EB}"/>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOffForegroundBrush" Color="{StaticResource NexusPrimitiveColor64748B}"/>
+    <SolidColorBrush x:Key="AIWorkspaceDeepThinkOnForegroundBrush" Color="{StaticResource NexusPrimitiveColor2563EB}"/>
+    <SolidColorBrush x:Key="AIWorkspaceUserBubbleBackgroundBrush" Color="{StaticResource NexusPrimitiveColorE9EFF4}"/>
+    <SolidColorBrush x:Key="AIWorkspaceModalBackdropBrush" Color="{StaticResource NexusPrimitiveColor3B000000}"/>
+
+    <!-- ============================================================ -->
+    <!-- NEXUS UI FOUNDATION SEMANTIC BRUSHES                         -->
+    <!-- ============================================================ -->
+    <SolidColorBrush x:Key="NexusBrushBackground" Color="{StaticResource NexusPrimitiveColorFAFAFA}"/>
+    <SolidColorBrush x:Key="NexusBrushPanelBackground" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusBrushInputBackground" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusBrushTextPrimary" Color="{StaticResource NexusPrimitiveColor0F172A}"/>
+    <SolidColorBrush x:Key="NexusBrushTextSecondary" Color="{StaticResource NexusPrimitiveColor64748B}"/>
+    <SolidColorBrush x:Key="NexusBrushBorder" Color="{StaticResource NexusPrimitiveColorE2E8F0}"/>
+    <SolidColorBrush x:Key="NexusBrushAccent" Color="{StaticResource NexusPrimitiveColor0078D4}"/>
+    <SolidColorBrush x:Key="NexusBrushStatusSuccess" Color="{StaticResource NexusPrimitiveColor10B981}"/>
+    <SolidColorBrush x:Key="NexusBrushStatusDanger" Color="{StaticResource NexusPrimitiveColorEF4444}"/>
+    <SolidColorBrush x:Key="NexusBrushHeroStop0" Color="{StaticResource NexusPrimitiveColorF8FAFC}"/>
+    <SolidColorBrush x:Key="NexusBrushHeroStop1" Color="{StaticResource NexusPrimitiveColorE2E8F0}"/>
+    <SolidColorBrush x:Key="NexusBrushHeroStop2" Color="{StaticResource NexusPrimitiveColorCBD5E1}"/>
+    <SolidColorBrush x:Key="NexusBrushCardIconBg" Color="{StaticResource NexusPrimitiveColorF1F5F9}"/>
+
+    <Color x:Key="NexusColorHeroStop0">#F8FAFC</Color>
+    <Color x:Key="NexusColorHeroStop1">#E2E8F0</Color>
+    <Color x:Key="NexusColorHeroStop2">#CBD5E1</Color>
+</ResourceDictionary>

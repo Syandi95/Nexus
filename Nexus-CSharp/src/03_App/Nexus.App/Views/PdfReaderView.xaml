@@ -1,0 +1,57 @@
+<UserControl x:Class="Nexus.App.Views.PdfReaderView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="clr-namespace:Nexus.App.ViewModels"
+ xmlns:views="clr-namespace:Nexus.App.Views"
+ IsVisibleChanged="Reader_IsVisibleChanged" Loaded="Reader_Loaded" Unloaded="Reader_Unloaded" DataContextChanged="Reader_DataContextChanged" PreviewKeyDown="Reader_PreviewKeyDown">
+ <UserControl.Resources>
+  <Style TargetType="Button" BasedOn="{StaticResource NexusButtonStyle}"><Setter Property="MinWidth" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="8,0"/><Setter Property="Margin" Value="2,0,2,4"/></Style>
+  <Style TargetType="TextBox" BasedOn="{StaticResource NexusTextBoxStyle}"><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="4,0"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="Margin" Value="2,0,2,4"/></Style>
+  <Style TargetType="ComboBox" BasedOn="{StaticResource NexusComboBoxStyle}"><Setter Property="Height" Value="32"/><Setter Property="Margin" Value="2,0,2,4"/></Style>
+  <Style x:Key="ReaderHandToggleStyle" TargetType="ToggleButton">
+   <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Margin" Value="2,0,2,4"/><Setter Property="Padding" Value="6"/>
+   <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/><Setter Property="Background" Value="{DynamicResource NexusSurfaceBase}"/><Setter Property="BorderBrush" Value="{DynamicResource NexusContentBorder}"/><Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}"><Viewbox><Path Width="24" Height="24" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" StrokeLineJoin="Round" Data="M8,13 L8,5 C8,3 11,3 11,5 L11,11 L11,3 C11,1 14,1 14,3 L14,11 L14,5 C14,3 17,3 17,5 L17,12 L17,8 C17,6 20,6 20,8 L20,15 C20,20 17,22 13,22 C10,22 8,21 6,18 L3,14 C1,12 3,10 5,12 L8,15"/></Viewbox></Border></ControlTemplate></Setter.Value></Setter>
+   <Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="{DynamicResource NexusAccentPrimary}"/><Setter Property="Foreground" Value="{DynamicResource NexusForegroundOnAccent}"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource NexusAccentPrimary}"/></Trigger></Style.Triggers>
+  </Style>
+ </UserControl.Resources>
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <WrapPanel x:Name="ReaderToolbar" Margin="0,0,0,8">
+   <ComboBox Width="180" Margin="0,0,6,4" ItemsSource="{Binding Sources}" SelectedItem="{Binding ActiveDocument,Mode=OneWay}" SelectionChanged="Document_SelectionChanged" ToolTip="Dokumen aktif"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate><ComboBox.ItemContainerStyle><Style TargetType="ComboBoxItem" BasedOn="{StaticResource NexusComboBoxItemStyle}"><Setter Property="IsEnabled" Value="{Binding IsReady}"/><Setter Property="ToolTip" Value="{Binding ImportError}"/></Style></ComboBox.ItemContainerStyle></ComboBox>
+   <Button Content="‹" Command="{Binding PreviousPageCommand}" ToolTip="Halaman sebelumnya"/>
+   <TextBox Width="42" Text="{Binding PageNumber,UpdateSourceTrigger=LostFocus}" ToolTip="Nomor halaman"/>
+   <TextBlock Text="{Binding PageCount,StringFormat=' / {0}'}" VerticalAlignment="Center" Margin="4,0"/>
+   <Button Content="›" Command="{Binding NextPageCommand}" ToolTip="Halaman berikutnya"/>
+   <Button Content="−" Command="{Binding ZoomOutCommand}" ToolTip="Perkecil"/>
+   <TextBox Width="62" Text="{Binding ZoomText,UpdateSourceTrigger=LostFocus}" ToolTip="Zoom 10–1000%"/>
+   <Button Content="+" Command="{Binding ZoomInCommand}" ToolTip="Perbesar"/>
+   <ComboBox Width="118" Margin="6,0" SelectedValue="{Binding FitMode}" SelectedValuePath="Tag">
+    <ComboBoxItem Content="Fit page" Tag="{x:Static vm:PdfReaderFitMode.FitPage}"/>
+    <ComboBoxItem Content="Fit width" Tag="{x:Static vm:PdfReaderFitMode.FitWidth}"/>
+    <ComboBoxItem Content="Custom size" Tag="{x:Static vm:PdfReaderFitMode.Custom}"/>
+   </ComboBox>
+   <Button Content="↶" Click="RotateLeft_Click" ToolTip="Putar tampilan ke kiri; sumber tetap"/>
+   <Button Content="↷" Click="RotateRight_Click" ToolTip="Putar tampilan ke kanan; sumber tetap"/>
+   <ToggleButton x:Name="PdfHandToggle" IsChecked="{Binding IsHandMode}" Style="{StaticResource ReaderHandToggleStyle}" ToolTip="Geser halaman" AutomationProperties.Name="Geser halaman"/>
+   <Button Content="Daftar file" Margin="6,0" Click="ShowCards_Click" Visibility="{Binding DataContext.HasMultipleFiles,RelativeSource={RelativeSource AncestorType={x:Type views:PdfUtilitiesView}},Converter={StaticResource BooleanToVisibilityConverter}}"/>
+  </WrapPanel>
+  <ListBox x:Name="PageList" Grid.Row="1" ItemsSource="{Binding Pages}" Background="{DynamicResource NexusPdfTabStripBackground}" BorderThickness="0"
+   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True"
+   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0"
+   ScrollViewer.ScrollChanged="Pages_ScrollChanged" SizeChanged="Pages_SizeChanged" PreviewMouseWheel="Pages_MouseWheel" PreviewKeyDown="Pages_KeyDown" PreviewMouseLeftButtonDown="Pages_MouseDown" PreviewMouseMove="Pages_MouseMove" PreviewMouseLeftButtonUp="Pages_MouseUp" LostMouseCapture="Pages_LostMouseCapture">
+   <ListBox.Style><Style TargetType="ListBox"><Setter Property="Cursor" Value="Arrow"/><Style.Triggers><DataTrigger Binding="{Binding IsHandMode}" Value="True"><Setter Property="Cursor" Value="Hand"/></DataTrigger></Style.Triggers></Style></ListBox.Style>
+   <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+   <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Focusable" Value="False"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+   <ListBox.ItemTemplate><DataTemplate>
+    <Border Width="{Binding Width}" Height="{Binding Height}" Margin="16,8" Background="White" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" AutomationProperties.Name="{Binding Label}">
+     <Grid ClipToBounds="True">
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12"/>
+      <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"><Image.LayoutTransform><RotateTransform Angle="{Binding Rotation}"/></Image.LayoutTransform></Image>
+     </Grid>
+    </Border>
+   </DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+  <TextBlock Grid.Row="1" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+ </Grid>
+</UserControl>

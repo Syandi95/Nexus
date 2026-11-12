@@ -1,0 +1,10 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="../Tokens/PrimitiveTokens.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+    <!-- Migration-only compatibility brush aliases. Do not consume in new code. -->
+    <SolidColorBrush x:Key="NexusBrushStatusInfo" Color="{StaticResource NexusPrimitiveColor0078D4}"/>
+    <SolidColorBrush x:Key="NexusStatusSuccess" Color="{StaticResource NexusPrimitiveColor10B981}"/>
+</ResourceDictionary>

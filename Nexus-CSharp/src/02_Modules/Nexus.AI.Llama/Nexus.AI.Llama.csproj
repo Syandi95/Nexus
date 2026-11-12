@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\01_Foundation\Nexus.Foundation\Nexus.Foundation.csproj" />
+    <ProjectReference Include="..\..\00_Contracts\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\Nexus.PdfUtilities\Nexus.PdfUtilities.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.10" />
+    <PackageReference Include="UTF.Unknown" Version="2.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nexus.AI.Llama.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

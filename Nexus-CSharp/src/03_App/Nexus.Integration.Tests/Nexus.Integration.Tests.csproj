@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="Moq" Version="4.20.70" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\00_Contracts\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\..\01_Foundation\Nexus.Foundation\Nexus.Foundation.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Conversation\Nexus.Conversation.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.AI.EditingLite\Nexus.AI.EditingLite.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.FileUtilities\Nexus.FileUtilities.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.AI.Llama\Nexus.AI.Llama.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Engine.ImageSubsystem\Nexus.Engine.ImageSubsystem.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.PdfUtilities\Nexus.PdfUtilities.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Core.HomeSettings\Nexus.Core.HomeSettings.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Engine.ColorManagement\Nexus.Engine.ColorManagement.csproj" />
+    <ProjectReference Include="..\Nexus.App\Nexus.App.csproj" />
+  </ItemGroup>
+
+</Project>

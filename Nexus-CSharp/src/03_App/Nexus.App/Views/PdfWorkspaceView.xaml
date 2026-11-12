@@ -1,0 +1,52 @@
+<UserControl x:Class="Nexus.App.Views.PdfWorkspaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:Nexus.App.Views"
+             xmlns:services="clr-namespace:Nexus.App.Services">
+    <UserControl.Resources>
+        <ResourceDictionary><ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/Nexus.App;component/Themes/Components/PdfWorkspace.xaml"/>
+        </ResourceDictionary.MergedDictionaries></ResourceDictionary>
+    </UserControl.Resources>
+    <Grid>
+        <TabControl x:Name="PdfWorkspaceTabs" ItemsSource="{Binding Workspaces}"
+                    SelectedItem="{Binding SelectedWorkspace, Mode=TwoWay}"
+                    Style="{StaticResource NexusPdfWorkspaceTabControlStyle}"
+                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                    Background="{DynamicResource NexusSurfaceBase}" BorderBrush="{DynamicResource NexusContentBorder}"
+                    KeyboardNavigation.TabNavigation="Local" AutomationProperties.Name="Workspace PDF">
+
+            <TabControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                        <Grid Width="16" Height="20" VerticalAlignment="Center" Margin="0,0,8,0">
+                            <TextBlock services:NexusIcon.Glyph="{Binding WorkspaceGlyph}" FontSize="16" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource NexusAccentPrimary}"/>
+                            <TextBlock Text="{Binding WorkspaceBadge}" FontSize="7" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                       Foreground="{DynamicResource NexusAccentPrimary}" Background="{DynamicResource NexusSurfaceBase}"/>
+                        </Grid>
+                        <TextBlock Text="{Binding WorkspaceTitle}" MaxWidth="180" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" ToolTip="{Binding WorkspaceTitle}"/>
+                        <Button Width="24" Height="24" Padding="0" Margin="12,0,0,0"
+                                Style="{StaticResource NexusToolbarButtonStyle}"
+                                Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" Click="CloseTab_Click"
+                                ToolTip="Tutup workspace; file sumber tetap tersimpan"
+                                AutomationProperties.Name="{Binding WorkspaceTitle, StringFormat=Tutup {0}}">
+                            <TextBlock services:NexusIcon.Glyph="Close" FontSize="12"/>
+                        </Button>
+                    </StackPanel>
+                </DataTemplate>
+            </TabControl.ItemTemplate>
+            <TabControl.ContentTemplate>
+                <DataTemplate><views:PdfUtilitiesView/></DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Visibility="{Binding HasNoWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <TextBlock Text="Tambahkan file" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,16"
+                       HorizontalAlignment="Center" Foreground="{DynamicResource NexusForegroundPrimary}"/>
+            <Button Content="Workspace PDF baru" Command="{Binding AddTabCommand}" Style="{StaticResource NexusPrimaryButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

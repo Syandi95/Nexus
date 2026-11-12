@@ -1,0 +1,125 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+    <!-- Geometry -->
+    <CornerRadius x:Key="NexusRadiusNone">0</CornerRadius>
+    <CornerRadius x:Key="NexusRadiusSmall">4</CornerRadius>
+    <CornerRadius x:Key="NexusRadiusMedium">8</CornerRadius>
+    <CornerRadius x:Key="NexusRadiusLarge">12</CornerRadius>
+    <CornerRadius x:Key="NexusRadiusXLarge">16</CornerRadius>
+    <CornerRadius x:Key="NexusRadiusCard">16</CornerRadius>
+
+    <sys:Double x:Key="NexusStrokeNone">0</sys:Double>
+    <sys:Double x:Key="NexusStrokeStandard">1</sys:Double>
+    <sys:Double x:Key="NexusStrokeStrong">2</sys:Double>
+    <sys:Double x:Key="NexusStrokeFocus">2</sys:Double>
+
+    <sys:Double x:Key="NexusHeightCompact">32</sys:Double>
+    <sys:Double x:Key="NexusHeightStandard">40</sys:Double>
+    <sys:Double x:Key="NexusHeightLarge">48</sys:Double>
+    <sys:Double x:Key="NexusHeightLargeAction">44</sys:Double>
+    <sys:Double x:Key="NexusHeightNavigation">44</sys:Double>
+
+    <!-- Spacing -->
+    <Thickness x:Key="NexusSpacingSmall">8</Thickness>
+    <Thickness x:Key="NexusSpacingMedium">16</Thickness>
+    <Thickness x:Key="NexusSpacingLarge">24</Thickness>
+    <sys:Double x:Key="NexusSpacing2">2</sys:Double>
+    <sys:Double x:Key="NexusSpacing4">4</sys:Double>
+    <sys:Double x:Key="NexusSpacing8">8</sys:Double>
+    <sys:Double x:Key="NexusSpacing12">12</sys:Double>
+    <sys:Double x:Key="NexusSpacing16">16</sys:Double>
+    <sys:Double x:Key="NexusSpacing24">24</sys:Double>
+    <sys:Double x:Key="NexusSpacing32">32</sys:Double>
+    <sys:Double x:Key="NexusSpacing40">40</sys:Double>
+
+    <!-- AI Workspace reading layout -->
+    <sys:Double x:Key="NexusAIWorkspaceReadingFrameMaxWidth">860</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceReadingGutterNormal">30</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceReadingGutterMedium">20</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceReadingGutterMinimum">12</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceReadingViewportNormal">1000</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceReadingViewportMedium">720</sys:Double>
+    <sys:Double x:Key="NexusAIWorkspaceMarkdownBodyLineHeightMultiplier">1.5</sys:Double>
+
+    <!-- Canonical typography source. Compatibility aliases live in SharedStyles.xaml. -->
+    <FontFamily x:Key="NexusTypographyFontFamily">Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="NexusTypographyCodeFontFamily">Consolas</FontFamily>
+    <FontFamily x:Key="NexusTypographyIconFontFamily">pack://application:,,,/Nexus.App;component/Resources/Fonts/#FluentSystemIcons-Regular</FontFamily>
+    <!-- Semantic font roles for module content and standalone icon glyphs. -->
+    <!-- FontFamily aliases need distinct keyed instances in compiled BAML; a
+         StaticResource alias can re-key the original FontFamily resource. -->
+    <FontFamily x:Key="NexusContentFontFamily">Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="NexusGlyphFontFamily">pack://application:,,,/Nexus.App;component/Resources/Fonts/#FluentSystemIcons-Regular</FontFamily>
+    <sys:Double x:Key="NexusTypographyCaptionSize">12</sys:Double>
+    <sys:Double x:Key="NexusTypographyBodySmallSize">11</sys:Double>
+    <sys:Double x:Key="NexusTypographyBodyCompactSize">13</sys:Double>
+    <sys:Double x:Key="NexusTypographyBodySize">14</sys:Double>
+    <sys:Double x:Key="NexusTypographySubtitleSize">16</sys:Double>
+    <sys:Double x:Key="NexusTypographyTitleSize">20</sys:Double>
+    <sys:Double x:Key="NexusTypographyWelcomeSize">24</sys:Double>
+    <sys:Double x:Key="NexusTypographyDisplaySize">28</sys:Double>
+    <sys:Double x:Key="NexusTypographyCodeSize">12</sys:Double>
+    <sys:Double x:Key="NexusTypographyIconSmallSize">10</sys:Double>
+    <sys:Double x:Key="NexusTypographyIconSize">16</sys:Double>
+    <!-- Legacy Typography Scale Aliases -->
+    <sys:Double x:Key="NexusFontDisplay">28</sys:Double>
+    <sys:Double x:Key="NexusFontHeader">20</sys:Double>
+    <sys:Double x:Key="NexusFontTitle">16</sys:Double>
+    <sys:Double x:Key="NexusFontBody">14</sys:Double>
+    <sys:Double x:Key="NexusFontLabel">12</sys:Double>
+    <sys:Double x:Key="NexusFontCaption">11</sys:Double>
+    <FontWeight x:Key="NexusTypographyRegularWeight">Normal</FontWeight>
+    <FontWeight x:Key="NexusTypographyMediumWeight">Medium</FontWeight>
+    <FontWeight x:Key="NexusTypographyStrongWeight">SemiBold</FontWeight>
+
+    <Style x:Key="NexusTypographyCaption" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographyCaptionSize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyRegularWeight}"/>
+    </Style>
+    <Style x:Key="NexusTypographyBody" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographyBodySize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyRegularWeight}"/>
+    </Style>
+    <Style x:Key="NexusTypographyBodyStrong" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographyBodySize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyStrongWeight}"/>
+    </Style>
+    <Style x:Key="NexusTypographySubtitle" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographySubtitleSize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyStrongWeight}"/>
+    </Style>
+    <Style x:Key="NexusTypographyTitle" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographyTitleSize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyStrongWeight}"/>
+    </Style>
+    <Style x:Key="NexusTypographyDisplay" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="{StaticResource NexusTypographyFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource NexusTypographyDisplaySize}"/>
+        <Setter Property="FontWeight" Value="{StaticResource NexusTypographyStrongWeight}"/>
+    </Style>
+
+    <!-- Icon size -->
+    <sys:Double x:Key="NexusIconSizeSmall">12</sys:Double>
+    <sys:Double x:Key="NexusIconSizeStandard">16</sys:Double>
+    <sys:Double x:Key="NexusIconSizeNavigation">20</sys:Double>
+    <sys:Double x:Key="NexusIconSizeStatus">24</sys:Double>
+    <sys:Double x:Key="NexusIconSizeIllustration">40</sys:Double>
+
+    <!-- Static motion durations -->
+    <Duration x:Key="NexusMotionFast">0:0:0.100</Duration>
+    <Duration x:Key="NexusMotionStandard">0:0:0.160</Duration>
+    <Duration x:Key="NexusMotionSlow">0:0:0.240</Duration>
+
+    <!-- Elevation levels are context-free metrics; effects remain component-owned. -->
+    <sys:Double x:Key="NexusElevationLevel0">0</sys:Double>
+    <sys:Double x:Key="NexusElevationLevel1">1</sys:Double>
+    <sys:Double x:Key="NexusElevationLevel2">2</sys:Double>
+    <sys:Double x:Key="NexusElevationLevel3">3</sys:Double>
+    <sys:Double x:Key="NexusElevationLevel4">4</sys:Double>
+</ResourceDictionary>

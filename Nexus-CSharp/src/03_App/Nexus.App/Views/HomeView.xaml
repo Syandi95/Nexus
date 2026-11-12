@@ -1,0 +1,69 @@
+<UserControl x:Class="Nexus.App.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900">
+    <Grid x:Name="ModuleHome" Visibility="Visible">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <ScrollViewer Style="{StaticResource NexusScrollViewerStyle}" VerticalScrollBarVisibility="Auto" Padding="40,30,40,30">
+            <StackPanel>
+                <!-- Home Hero Banner with Theme-Aware Gradient + Image Background -->
+                <Border x:Name="HeroBannerBg" Height="300" CornerRadius="{StaticResource NexusRadiusCard}" Margin="0,0,0,24" ClipToBounds="True" Effect="{StaticResource CardShadow}">
+                    <Border.Background>
+                        <ImageBrush ImageSource="pack://siteoforigin:,,,/Assets/MyImage.jpg" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center"/>
+                    </Border.Background>
+                    <Grid>
+                        <Border x:Name="HeroOverlay" CornerRadius="{Binding CornerRadius, ElementName=HeroBannerBg}">
+                            <Border.Background>
+                                <RadialGradientBrush Center="0.3,0.5" GradientOrigin="0.3,0.5" RadiusX="0.8" RadiusY="0.8">
+                                    <GradientStop Color="#1F000000" Offset="0.0"/>
+                                    <GradientStop Color="#4F000000" Offset="1.0"/>
+                                </RadialGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Margin="36,24,36,24">
+                            <TextBlock x:Name="HeaderTitle" Text="Nexus Workspace" FontSize="{StaticResource NexusFontDisplay}" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="{DynamicResource NexusBrushTextPrimary}"/>
+                            <TextBlock x:Name="HeaderSubtitle" Text="Ringkasan aktivitas sistem dan integrasi modul." FontSize="{StaticResource NexusFontHeader}" Foreground="{DynamicResource NexusBrushTextSecondary}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" x:Name="CardLastActivity" Style="{StaticResource NexusCardStyle}" Padding="24" Margin="40,0,40,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="AKTIVITAS TERAKHIR" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,12"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Modul: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                        <TextBlock x:Name="LastActivityModuleTextBlock" Text="{Binding ActiveModule, FallbackValue=-}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource NexusAccentPrimary}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="LastActivityDetailTextBlock" Text="{Binding ActivityDetail, FallbackValue='Belum ada riwayat aktivitas terbaru.'}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="{DynamicResource NexusSurfaceSecondary}" CornerRadius="8" Padding="16,12" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="FILES" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource NexusStatusSuccess}"/>
+                            <TextBlock x:Name="DashboardTotalFilesTextBlock" Text="{Binding TotalFiles, FallbackValue=0}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource NexusStatusSuccess}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{DynamicResource NexusSurfaceSecondary}" CornerRadius="8" Padding="16,12">
+                        <StackPanel>
+                            <TextBlock Text="SIZE" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource NexusAccentPrimary}"/>
+                            <TextBlock x:Name="DashboardTotalSizeTextBlock" Text="{Binding TotalSizeFormatted, FallbackValue='0 KB'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource NexusAccentPrimary}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

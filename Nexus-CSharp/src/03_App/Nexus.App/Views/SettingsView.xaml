@@ -1,0 +1,310 @@
+﻿<UserControl x:Class="Nexus.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:services="clr-namespace:Nexus.App.Services"
+             xmlns:controls="clr-namespace:Nexus.App.Controls.InfoBar"
+             xmlns:settings="clr-namespace:Nexus.App.Controls.SettingsCard"
+             mc:Ignorable="d" 
+             d:DesignHeight="850" d:DesignWidth="980">
+    <Grid Margin="28,24,28,32">
+        <ScrollViewer Style="{StaticResource NexusScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <!-- Perfectly Centered Minimalist Edge Container (MaxWidth 920px) -->
+            <StackPanel MaxWidth="920" HorizontalAlignment="Center" Width="920" Margin="0,0,0,24">
+
+                <!-- Page Header (Clean & Modern) -->
+                <StackPanel Margin="0,0,0,24">
+                    <TextBlock Text="Pengaturan" FontSize="24" FontWeight="SemiBold"
+                               Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                </StackPanel>
+
+                <!-- Inline Notification InfoBar (Windows 11 Fluent) -->
+                <controls:InfoBar IsOpen="{Binding IsInfoBarOpen}"
+                                  Title="{Binding InfoBarTitle}"
+                                  Message="{Binding InfoBarMessage}"
+                                  Severity="{Binding InfoBarSeverity}"
+                                  Margin="0,0,0,16"/>
+
+                <!-- ================= SECTION 1: TAMPILAN ================= -->
+                <TextBlock Text="Tampilan" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="2,0,0,8"/>
+                <settings:SettingsCard Header="Tema Aplikasi"
+                                       Description="Pilih mode tampilan terang (Light) atau gelap (Dark)"
+                                       Margin="0,0,0,20">
+                    <!-- Right: Pill Segmented Selector -->
+                    <Border Background="{DynamicResource NexusSurfaceSecondary}" CornerRadius="8" Padding="3" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="LightModeRadioButton" Style="{StaticResource NexusRadioButtonStyle}" GroupName="Theme"
+                                         IsChecked="{Binding IsLightTheme, Mode=TwoWay}" Margin="0,0,4,0" Padding="12,5"
+                                         Foreground="{DynamicResource NexusForegroundPrimary}" Cursor="Hand">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock services:NexusIcon.Glyph="LightTheme" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Light" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="DarkModeRadioButton" Style="{StaticResource NexusRadioButtonStyle}" GroupName="Theme"
+                                         IsChecked="{Binding IsDarkTheme, Mode=TwoWay}" Padding="12,5"
+                                         Foreground="{DynamicResource NexusForegroundPrimary}" Cursor="Hand">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock services:NexusIcon.Glyph="DarkTheme" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Dark" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+                    </Border>
+                </settings:SettingsCard>
+
+                <!-- ================= SECTION 2: MANAJEMEN WARNA ================= -->
+                <TextBlock Text="Manajemen Warna" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="2,0,0,8"/>
+                <settings:SettingsCard Header="Profil CMYK Default"
+                                       Description="Profil warna ICC yang digunakan saat ekspor format cetak CMYK"
+                                       Margin="0,0,0,20">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ComboBox x:Name="CmykProfileComboBox"
+                                  ItemsSource="{Binding CmykProfiles}"
+                                  SelectedItem="{Binding SelectedCmykProfile, Mode=TwoWay}"
+                                  Style="{StaticResource NexusComboBoxStyle}"
+                                  Width="200" Height="32" Margin="0,0,8,0"
+                                  VerticalAlignment="Center">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button x:Name="OpenProfilesFolderButton"
+                                Style="{StaticResource NexusButtonStyle}"
+                                Command="{Binding OpenProfilesFolderCommand}" Padding="14,0" Height="32" Cursor="Hand">
+                            <TextBlock Text="Kelola" FontSize="12" FontWeight="SemiBold"/>
+                        </Button>
+                    </StackPanel>
+                </settings:SettingsCard>
+
+                <!-- ================= SECTION 3: PENYIMPANAN & AI ================= -->
+                <TextBlock Text="Penyimpanan &amp; AI Engine" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="2,0,0,8"/>
+                <!-- Row 1: Folder Downloads -->
+                <settings:SettingsCard Header="Folder Downloads" Description="{Binding DownloadsFolder}" Margin="0,0,0,8">
+                    <Button x:Name="BrowseDownloadsButton" Style="{StaticResource NexusButtonStyle}"
+                            Command="{Binding BrowseDownloadsCommand}" Padding="16,0" Height="32" Cursor="Hand" VerticalAlignment="Center">
+                        <TextBlock Text="Jelajahi" FontSize="12" FontWeight="SemiBold"/>
+                    </Button>
+                </settings:SettingsCard>
+
+                <!-- Row 2: Model Folder -->
+                <settings:SettingsCard Header="Direktori Model AI" Description="{Binding ModelRootFolder}" Margin="0,0,0,8">
+                    <Button x:Name="BrowseModelFolderButton" Style="{StaticResource NexusButtonStyle}"
+                            Command="{Binding BrowseModelFolderCommand}" Padding="16,0" Height="32" Cursor="Hand" VerticalAlignment="Center">
+                        <TextBlock Text="Jelajahi" FontSize="12" FontWeight="SemiBold"/>
+                    </Button>
+                </settings:SettingsCard>
+
+                <!-- Row 3: Engine Folder -->
+                <settings:SettingsCard Header="Direktori Engine AI" Description="{Binding EngineRootFolder}" Margin="0,0,0,20">
+                    <Button x:Name="BrowseEngineFolderButton" Style="{StaticResource NexusButtonStyle}"
+                            Command="{Binding BrowseEngineFolderCommand}" Padding="16,0" Height="32" Cursor="Hand" VerticalAlignment="Center">
+                        <TextBlock Text="Jelajahi" FontSize="12" FontWeight="SemiBold"/>
+                    </Button>
+                </settings:SettingsCard>
+
+                <!-- ================= SECTION 4: MODEL AI WORKSPACE ================= -->
+                <TextBlock Text="Model AI Workspace" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="2,0,0,8"/>
+                <Border Style="{StaticResource NexusCardStyle}" CornerRadius="10" BorderThickness="1" Padding="20,16" Margin="0,0,0,20">
+                    <StackPanel>
+                        <!-- Card Header & Action Bar -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="Model Terpasang (.gguf)" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                                <TextBlock Text="Kelola model LLM lokal untuk modul percakapan AI Workspace" FontSize="12"
+                                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,3,0,0"/>
+                            </StackPanel>
+
+                            <!-- Actions -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Style="{StaticResource NexusButtonStyle}"
+                                        Command="{Binding OpenAiModelsFolderCommand}"
+                                        Padding="12,0" Height="32" Cursor="Hand" Margin="0,0,8,0">
+                                    <TextBlock Text="Buka Folder" FontSize="12" FontWeight="SemiBold"/>
+                                </Button>
+                                <Button Style="{StaticResource NexusButtonStyle}"
+                                        Command="{Binding ScanAiModelsCommand}"
+                                        Padding="12,0" Height="32" Cursor="Hand" Margin="0,0,8,0">
+                                    <TextBlock Text="Pindai &amp; Sinkronkan" FontSize="12" FontWeight="SemiBold"/>
+                                </Button>
+                                <Button Style="{StaticResource NexusPrimaryButtonStyle}"
+                                        Command="{Binding AddAiModelCommand}"
+                                        Padding="14,0" Height="32" Cursor="Hand">
+                                    <TextBlock Text="+ Tambah Model" FontSize="12" FontWeight="SemiBold"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Copy Progress Bar -->
+                        <StackPanel Margin="0,12,0,0" Visibility="{Binding IsCopyingModel, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid Margin="0,0,0,4">
+                                <TextBlock Text="{Binding ModelOperationStatusMessage}" FontSize="12"
+                                           Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                                <TextBlock Text="{Binding CopyProgressPercentage, StringFormat={}{0}%}" FontSize="12"
+                                           HorizontalAlignment="Right" Foreground="{DynamicResource NexusAccentBrush}"/>
+                            </Grid>
+                            <ProgressBar Value="{Binding CopyProgressPercentage}" Maximum="100" Height="4"
+                                         Foreground="{DynamicResource NexusAccentBrush}" Background="{DynamicResource NexusSurfaceSecondary}"
+                                         BorderThickness="0"/>
+                        </StackPanel>
+
+                        <Rectangle Height="1" Fill="{DynamicResource NexusBorderSubtle}" Margin="0,14" SnapsToDevicePixels="True"/>
+
+                        <!-- Collapsible Expander for Installed Models List -->
+                        <Expander IsExpanded="{Binding IsAiModelsExpanded, Mode=TwoWay}"
+                                  Foreground="{DynamicResource NexusForegroundPrimary}">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Daftar Model Terpasang" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                                    <Border Margin="10,0,0,0" Padding="8,2" CornerRadius="10"
+                                            Background="{DynamicResource NexusSurfaceSecondary}">
+                                        <TextBlock Text="{Binding InstalledAiModels.Count, StringFormat='{}{0} Model'}"
+                                                   FontSize="11" FontWeight="Medium"
+                                                   Foreground="{DynamicResource NexusForegroundSecondary}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Expander.Header>
+
+                            <!-- Model Items List -->
+                            <ItemsControl ItemsSource="{Binding InstalledAiModels}" Margin="0,10,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Model Title & Details -->
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                                                    <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="4"
+                                                            Background="{DynamicResource NexusAccentBrush}"
+                                                            Visibility="{Binding IsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="Aktif" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding FileSizeFormatted, StringFormat='Ukuran: {0}'}" FontSize="11"
+                                                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,2,0,0"/>
+                                            </StackPanel>
+
+                                            <!-- Status Badge -->
+                                            <Border Grid.Column="1" Margin="12,0" Padding="8,3" CornerRadius="4" VerticalAlignment="Center"
+                                                    Background="{DynamicResource NexusSurfaceSecondary}">
+                                                <TextBlock Text="{Binding StatusBadge}" FontSize="11" FontWeight="Medium"
+                                                           Foreground="{DynamicResource NexusForegroundSecondary}"/>
+                                            </Border>
+
+                                            <!-- Edge-style ... Options Button -->
+                                            <Button Grid.Column="2"
+                                                    Style="{StaticResource NexusIconButtonStyle}"
+                                                    Width="30" Height="30" Padding="0" Cursor="Hand"
+                                                    VerticalAlignment="Center" ToolTip="Opsi Model"
+                                                    Click="BtnModelOptions_Click">
+                                                <Button.ContextMenu>
+                                                    <ContextMenu Style="{StaticResource NexusContextMenuStyle}">
+                                                        <MenuItem Style="{StaticResource NexusMenuItemStyle}"
+                                                                  Header="Pindah ke paling atas"
+                                                                  Click="MoveToTop_Click"
+                                                                  CommandParameter="{Binding Id}"
+                                                                  IsEnabled="{Binding CanMoveUp}">
+                                                            <MenuItem.Icon>
+                                                                <TextBlock services:NexusIcon.Glyph="MoveToTop" FontSize="14" HorizontalAlignment="Center"/>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Style="{StaticResource NexusMenuItemStyle}"
+                                                                  Header="Pindah ke atas"
+                                                                  Click="MoveUp_Click"
+                                                                  CommandParameter="{Binding Id}"
+                                                                  IsEnabled="{Binding CanMoveUp}">
+                                                            <MenuItem.Icon>
+                                                                <TextBlock services:NexusIcon.Glyph="MoveUp" FontSize="14" HorizontalAlignment="Center"/>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <MenuItem Style="{StaticResource NexusMenuItemStyle}"
+                                                                  Header="Pindah ke bawah"
+                                                                  Click="MoveDown_Click"
+                                                                  CommandParameter="{Binding Id}"
+                                                                  IsEnabled="{Binding CanMoveDown}">
+                                                            <MenuItem.Icon>
+                                                                <TextBlock services:NexusIcon.Glyph="MoveDown" FontSize="14" HorizontalAlignment="Center"/>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                        <Separator Margin="0,3"/>
+                                                        <MenuItem Style="{StaticResource NexusMenuItemStyle}"
+                                                                  Header="Hapus"
+                                                                  Click="DeleteModel_Click"
+                                                                  CommandParameter="{Binding Id}">
+                                                            <MenuItem.Icon>
+                                                                <TextBlock services:NexusIcon.Glyph="Delete" FontSize="14" Foreground="#E05252" HorizontalAlignment="Center"/>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>
+                                                    </ContextMenu>
+                                                </Button.ContextMenu>
+                                                <TextBlock services:NexusIcon.Glyph="More" FontSize="14"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= SECTION 5: PREFERENSI & DIALOG ================= -->
+                <TextBlock Text="Preferensi Dialog" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource NexusForegroundSecondary}" Margin="2,0,0,8"/>
+                <!-- Row 1: Confirm Exit Toggle -->
+                <settings:SettingsCard Header="Konfirmasi Keluar Aplikasi"
+                                       Description="Tampilkan konfirmasi sebelum menutup aplikasi"
+                                       Margin="0,0,0,8">
+                    <CheckBox x:Name="ConfirmExitCheckBox"
+                              Style="{StaticResource NexusToggleSwitchStyle}"
+                              IsChecked="{Binding ConfirmExit, Mode=TwoWay}"
+                              VerticalAlignment="Center"/>
+                </settings:SettingsCard>
+
+                <!-- Row 2: Confirm Module Switch Toggle -->
+                <settings:SettingsCard Header="Konfirmasi Berpindah Modul"
+                                       Description="Tampilkan konfirmasi saat berpindah modul ketika proses AI aktif"
+                                       Margin="0,0,0,24">
+                    <CheckBox x:Name="ConfirmModuleCheckBox"
+                              Style="{StaticResource NexusToggleSwitchStyle}"
+                              IsChecked="{Binding ConfirmModule, Mode=TwoWay}"
+                              VerticalAlignment="Center"/>
+                </settings:SettingsCard>
+
+                <!-- ================= ACTION FOOTER (SIMPAN & RESET) ================= -->
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,16">
+                    <Button x:Name="SaveSettingsButton" Style="{StaticResource NexusPrimaryButtonStyle}"
+                            Command="{Binding SaveSettingsCommand}" Margin="0,0,10,0" Padding="22,0" Height="38" Cursor="Hand">
+                        <TextBlock Text="Simpan Pengaturan" FontSize="13" FontWeight="SemiBold"/>
+                    </Button>
+                    <Button x:Name="ResetSettingsButton" Style="{StaticResource NexusSecondaryButtonStyle}"
+                            Command="{Binding ResetSettingsCommand}" Padding="20,0" Height="38" Cursor="Hand">
+                        <TextBlock Text="Reset ke Default" FontSize="13" FontWeight="SemiBold"/>
+                    </Button>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

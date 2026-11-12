@@ -1,0 +1,351 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:services="clr-namespace:Nexus.App.Services">
+    <!-- Shadow Style for Cards -->
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="15" ShadowDepth="2" Opacity="0.08" Color="Black"/>
+
+
+
+    <DrawingBrush x:Key="CheckerboardBrush"
+                  TileMode="Tile"
+                  Viewport="0,0,16,16"
+                  ViewportUnits="Absolute"
+                  Viewbox="0,0,16,16"
+                  ViewboxUnits="Absolute">
+        <DrawingBrush.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="{DynamicResource SurfaceSecondaryBrush}" Geometry="M0,0 H16 V16 H0 Z"/>
+                <GeometryDrawing Brush="{DynamicResource SurfacePrimaryBrush}" Geometry="M0,0 H8 V8 H0 Z M8,8 H16 V16 H8 Z"/>
+            </DrawingGroup>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+    
+    <Style TargetType="Border" x:Key="MaximizeBorderStyle">
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="CornerRadius" Value="0"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Shadow for ComboBox Popups -->
+    <DropShadowEffect x:Key="NexusComboShadow" BlurRadius="12" ShadowDepth="2" Opacity="0.12" Color="Black"/>
+
+    <!-- Compatibility alias for existing item specializations. -->
+    <Style x:Key="NexusComboItemStyle"
+           TargetType="{x:Type ComboBoxItem}"
+           BasedOn="{StaticResource NexusComboBoxItemStyle}"/>
+
+    <!-- Shared Background Selector ComboBox Style (Icon-only) -->
+    <Style x:Key="NexusBackgroundComboBoxStyle" TargetType="{x:Type ComboBox}">
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="Margin" Value="2,0"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="ItemContainerStyle" Value="{StaticResource NexusComboBoxItemStyle}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBox}">
+                    <Grid>
+                        <ToggleButton x:Name="DropDownToggle" Focusable="False" ClickMode="Press"
+                                       IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                    <Border x:Name="ComboChrome" CornerRadius="{DynamicResource NexusRadiusSmall}" Background="Transparent"
+                                            BorderBrush="Transparent" BorderThickness="1">
+                                        <TextBlock services:NexusIcon.Glyph="Color" FontSize="15"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ComboChrome" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="ComboChrome" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}"/>
+                                            <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{DynamicResource NexusStrokeFocus}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                               IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade">
+                            <Border Margin="0,4,0,0" Padding="4" MinWidth="150"
+                                    CornerRadius="{DynamicResource NexusRadiusMedium}" Background="{DynamicResource SurfacePrimaryBrush}"
+                                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                    Effect="{StaticResource NexusComboShadow}">
+                                <ScrollViewer><ItemsPresenter/></ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource NexusForegroundDisabled}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Global Thin ScrollBar Support Styles -->
+    <Style x:Key="NexusScrollRepeatButtonStyle" TargetType="{x:Type RepeatButton}">
+        <Setter Property="OverridesDefaultStyle" Value="true"/>
+        <Setter Property="Focusable" Value="false"/>
+        <Setter Property="IsTabStop" Value="false"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Border Background="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="NexusScrollArrowButtonStyle" TargetType="{x:Type RepeatButton}">
+        <Setter Property="OverridesDefaultStyle" Value="true"/>
+        <Setter Property="Focusable" Value="false"/>
+        <Setter Property="IsTabStop" Value="false"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Border x:Name="Root" Background="Transparent" Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
+                        <ContentPresenter x:Name="ArrowContent"
+                                          Width="{TemplateBinding Width}"
+                                          Height="{TemplateBinding Height}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Opacity="0"
+                                          SnapsToDevicePixels="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="True">
+                            <Setter TargetName="ArrowContent" Property="Opacity" Value="0.75"/>
+                        </DataTrigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ArrowContent" Property="Opacity" Value="1.0"/>
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ArrowContent" Property="Opacity" Value="1.0"/>
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource NexusSurfaceSunken}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="NexusScrollThumbStyle" TargetType="{x:Type Thumb}">
+        <Setter Property="OverridesDefaultStyle" Value="true"/>
+        <Setter Property="IsTabStop" Value="false"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="Transparent">
+                        <Border x:Name="Visual"
+                                Width="2"
+                                HorizontalAlignment="Center"
+                                CornerRadius="1"
+                                Background="{DynamicResource NexusForegroundPrimary}"
+                                Opacity="0.28"
+                                SnapsToDevicePixels="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- Trigger: MouseHover on entire ScrollBar increases thumb thickness to 6px -->
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="true">
+                            <Setter TargetName="Visual" Property="Width" Value="6"/>
+                            <Setter TargetName="Visual" Property="CornerRadius" Value="3"/>
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.48"/>
+                        </DataTrigger>
+                        <!-- Trigger: MouseHover directly over Thumb provides subtle emphasis -->
+                        <Trigger Property="IsMouseOver" Value="true">
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.68"/>
+                        </Trigger>
+                        <!-- Trigger: Dragging active (pressed state) -->
+                        <Trigger Property="IsDragging" Value="true">
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.88"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="NexusScrollHorizontalThumbStyle" TargetType="{x:Type Thumb}">
+        <Setter Property="OverridesDefaultStyle" Value="true"/>
+        <Setter Property="IsTabStop" Value="false"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="Transparent">
+                        <Border x:Name="Visual"
+                                Height="2"
+                                VerticalAlignment="Center"
+                                CornerRadius="1"
+                                Background="{DynamicResource NexusForegroundPrimary}"
+                                Opacity="0.28"
+                                SnapsToDevicePixels="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- Trigger: MouseHover on entire ScrollBar increases thumb thickness to 6px -->
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollBar}}" Value="true">
+                            <Setter TargetName="Visual" Property="Height" Value="6"/>
+                            <Setter TargetName="Visual" Property="CornerRadius" Value="3"/>
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.48"/>
+                        </DataTrigger>
+                        <!-- Trigger: MouseHover directly over Thumb provides subtle emphasis -->
+                        <Trigger Property="IsMouseOver" Value="true">
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.68"/>
+                        </Trigger>
+                        <!-- Trigger: Dragging active (pressed state) -->
+                        <Trigger Property="IsDragging" Value="true">
+                            <Setter TargetName="Visual" Property="Opacity" Value="0.88"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Global Implicit ScrollBar Style -->
+    <Style TargetType="{x:Type ScrollBar}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Width" Value="12"/>
+                <Setter Property="MinWidth" Value="12"/>
+                <Setter Property="Height" Value="Auto"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ScrollBar}">
+                            <Grid x:Name="Bg" Background="Transparent" SnapsToDevicePixels="true">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                 <RepeatButton Grid.Row="0" Command="{x:Static ScrollBar.LineUpCommand}"
+                                              Style="{StaticResource NexusScrollArrowButtonStyle}"
+                                              Width="12" Height="12">
+                                    <Path Width="12" Height="12"
+                                          Data="M 3.5,7 L 6,4.5 L 8.5,7"
+                                          Stroke="{DynamicResource NexusForegroundPrimary}"
+                                          StrokeThickness="1.2"
+                                          SnapsToDevicePixels="True"/>
+                                </RepeatButton>
+                                <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsEnabled}">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Style="{StaticResource NexusScrollRepeatButtonStyle}" />
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource NexusScrollThumbStyle}" />
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Style="{StaticResource NexusScrollRepeatButtonStyle}" />
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                                <RepeatButton Grid.Row="2" Command="{x:Static ScrollBar.LineDownCommand}"
+                                              Style="{StaticResource NexusScrollArrowButtonStyle}"
+                                              Width="12" Height="12">
+                                    <Path Width="12" Height="12"
+                                          Data="M 3.5,5 L 6,7.5 L 8.5,5"
+                                          Stroke="{DynamicResource NexusForegroundPrimary}"
+                                          StrokeThickness="1.2"
+                                          SnapsToDevicePixels="True"/>
+                                </RepeatButton>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto"/>
+                <Setter Property="Height" Value="12"/>
+                <Setter Property="MinHeight" Value="12"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ScrollBar}">
+                            <Grid x:Name="Bg" Background="Transparent" SnapsToDevicePixels="true">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <RepeatButton Grid.Column="0" Command="{x:Static ScrollBar.LineLeftCommand}"
+                                              Style="{StaticResource NexusScrollArrowButtonStyle}"
+                                              Width="12" Height="12">
+                                    <Path Width="12" Height="12"
+                                          Data="M 7,3.5 L 4.5,6 L 7,8.5"
+                                          Stroke="{DynamicResource NexusForegroundPrimary}"
+                                          StrokeThickness="1.2"
+                                          SnapsToDevicePixels="True"/>
+                                </RepeatButton>
+                                <Track x:Name="PART_Track" Grid.Column="1" IsDirectionReversed="false" IsEnabled="{TemplateBinding IsEnabled}">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}" Style="{StaticResource NexusScrollRepeatButtonStyle}" />
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource NexusScrollHorizontalThumbStyle}" />
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="{x:Static ScrollBar.PageRightCommand}" Style="{StaticResource NexusScrollRepeatButtonStyle}" />
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                                <RepeatButton Grid.Column="2" Command="{x:Static ScrollBar.LineRightCommand}"
+                                              Style="{StaticResource NexusScrollArrowButtonStyle}"
+                                              Width="12" Height="12">
+                                    <Path Width="12" Height="12"
+                                          Data="M 5,3.5 L 7.5,6 L 5,8.5"
+                                          Stroke="{DynamicResource NexusForegroundPrimary}"
+                                          StrokeThickness="1.2"
+                                          SnapsToDevicePixels="True"/>
+                                </RepeatButton>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ============================================================ -->
+    <!-- SHARED IMAGE/PDF TOOLS STYLES (moved from ImageSubsystemView) -->
+    <!-- ============================================================ -->
+    <DropShadowEffect x:Key="RemoveBackgroundToolbarShadow"
+                       BlurRadius="12" ShadowDepth="2" Opacity="0.12" Color="Black"/>
+
+    <Style x:Key="RemoveBackgroundToolbarButtonStyle"
+           TargetType="{x:Type Button}"
+           BasedOn="{StaticResource NexusIconButtonStyle}">
+        <Setter Property="Width" Value="38"/>
+        <Setter Property="Height" Value="38"/>
+        <Setter Property="Margin" Value="2,0"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="Active">
+                <Setter Property="Background" Value="{DynamicResource NexusAccentRest}"/>
+                <Setter Property="Foreground" Value="{DynamicResource NexusForegroundOnAccent}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="RemoveBackgroundModernButtonStyle"
+           TargetType="{x:Type Button}"
+           BasedOn="{StaticResource NexusSecondaryButtonStyle}">
+        <Setter Property="Padding" Value="14,0"/>
+    </Style>
+
+    <Style x:Key="RemoveBackgroundPrimaryActionStyle"
+           TargetType="{x:Type Button}"
+           BasedOn="{StaticResource NexusPrimaryButtonStyle}"/>
+</ResourceDictionary>

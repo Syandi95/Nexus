@@ -1,0 +1,309 @@
+<UserControl x:Class="Nexus.App.Views.CleanDownloadsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:services="clr-namespace:Nexus.App.Services"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900">
+
+
+    <Grid x:Name="ModuleCleanDownloads" Visibility="Visible">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header & Summary Cards -->
+        <StackPanel Grid.Row="0" Margin="28,18,28,4">
+            <WrapPanel Margin="0,0,0,0">
+                <!-- Total File -->
+                <Border x:Name="cardCleanTotal" Style="{StaticResource NexusCardStyle}" Width="175" Height="76" Margin="0,0,10,10" Padding="14,12,14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="lblCleanTotal" Text="TOTAL FILE" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,5"/>
+                            <TextBlock x:Name="valCleanTotal" Text="{Binding TotalFileCount}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource NexusAccentPrimary}"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10" Background="{DynamicResource NexusSurfaceSecondary}" VerticalAlignment="Center">
+                            <TextBlock x:Name="IconCleanTotalAccent" services:NexusIcon.Glyph="Tag" FontSize="16" Foreground="{DynamicResource NexusAccentPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Total Ukuran -->
+                <Border x:Name="cardCleanSize" Style="{StaticResource NexusCardStyle}" Width="175" Height="76" Margin="0,0,10,10" Padding="14,12,14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="lblCleanSize" Text="TOTAL UKURAN" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,5"/>
+                            <TextBlock x:Name="valCleanSize" Text="{Binding TotalSizeText}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource NexusSuccessForeground}"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10" Background="{DynamicResource NexusSurfaceSecondary}" VerticalAlignment="Center">
+                            <TextBlock x:Name="IconCleanSize" services:NexusIcon.Glyph="Size" FontSize="16" Foreground="{DynamicResource NexusSuccessForeground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Terpilih (Hapus) -->
+                <Border x:Name="cardCleanSelected" Style="{StaticResource NexusCardStyle}" Width="175" Height="76" Margin="0,0,10,10" Padding="14,12,14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="lblCleanSelected" Text="TERPILIH (HAPUS)" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,5"/>
+                            <TextBlock x:Name="valCleanSelected" Text="{Binding SelectedCount}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource NexusErrorStroke}"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10" Background="{DynamicResource NexusSurfaceSecondary}" VerticalAlignment="Center">
+                            <TextBlock x:Name="IconCleanDelete" services:NexusIcon.Glyph="Delete" FontSize="16" Foreground="{DynamicResource NexusErrorStroke}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Folder -->
+                <Border x:Name="cardCleanFolder" Style="{StaticResource NexusCardStyle}" Width="175" Height="76" Margin="0,0,10,10" Padding="14,12,14,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock x:Name="lblCleanFolder" Text="FOLDER" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,5"/>
+                            <TextBlock x:Name="valCleanFolder" Text="{Binding FolderNameText}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundPrimary}"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10" Background="{DynamicResource NexusSurfaceSecondary}" VerticalAlignment="Center">
+                            <TextBlock x:Name="IconCleanFolder" services:NexusIcon.Glyph="Folder" FontSize="16" Foreground="{DynamicResource NexusWarningStroke}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+            </WrapPanel>
+        </StackPanel>
+
+        <!-- Body: File List + Preview Panel -->
+        <Grid Grid.Row="1" Margin="28,6,28,28">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="60*" MinWidth="400"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="40*" MinWidth="300"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- Left List Panel -->
+            <Border x:Name="CleanListPanel" Style="{StaticResource NexusCardStyle}" Grid.Column="0" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- Toolbar Buttons -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button x:Name="BtnCleanSelectAll" Style="{StaticResource NexusButtonStyle}" Command="{Binding SelectAllCommand}" Height="34" Margin="0,0,6,0" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock x:Name="IconCleanSelectAll" services:NexusIcon.Glyph="SelectAll" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Pilih Semua" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnCleanClearSelect" Style="{StaticResource NexusButtonStyle}" Command="{Binding ClearSelectionCommand}" Height="34" Margin="0,0,6,0" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock x:Name="IconCleanClearSelect" services:NexusIcon.Glyph="Remove" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Batal Pilih" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnCleanUndo" Style="{StaticResource NexusButtonStyle}" Command="{Binding UndoCommand}" Height="34" Margin="0,0,6,0" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock x:Name="IconCleanUndo" services:NexusIcon.Glyph="Undo" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Undo" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnCleanRefresh" Style="{StaticResource NexusButtonStyle}" Command="{Binding RefreshCommand}" Height="34" Margin="0,0,6,0" Cursor="Hand">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock x:Name="IconCleanRefresh" services:NexusIcon.Glyph="Refresh" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Refresh" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="TxtCleanRightCount" Text="{Binding RightCountText}" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    
+                    <!-- Filters & Sort -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock x:Name="lblCleanFilter" Text="Filter:" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <RadioButton x:Name="RbCleanAll" Style="{StaticResource NexusRadioButtonStyle}" Content="Semua" GroupName="CleanFilter" IsChecked="{Binding IsFilterAll, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanImage" Style="{StaticResource NexusRadioButtonStyle}" Content="Image" GroupName="CleanFilter" IsChecked="{Binding IsFilterImage, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanVideo" Style="{StaticResource NexusRadioButtonStyle}" Content="Video" GroupName="CleanFilter" IsChecked="{Binding IsFilterVideo, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanDoc" Style="{StaticResource NexusRadioButtonStyle}" Content="Doc" GroupName="CleanFilter" IsChecked="{Binding IsFilterDoc, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanDesign" Style="{StaticResource NexusRadioButtonStyle}" Content="Desain" GroupName="CleanFilter" IsChecked="{Binding IsFilterDesign, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanArchive" Style="{StaticResource NexusRadioButtonStyle}" Content="Archive" GroupName="CleanFilter" IsChecked="{Binding IsFilterArchive, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        <RadioButton x:Name="RbCleanOther" Style="{StaticResource NexusRadioButtonStyle}" Content="Other" GroupName="CleanFilter" IsChecked="{Binding IsFilterOther, Mode=TwoWay}" Margin="0,0,8,0" FontSize="11"/>
+                        
+                        <TextBlock x:Name="lblCleanSort" Text="Sort:" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center" Margin="12,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="CboCleanSort" Style="{StaticResource NexusComboBoxStyle}" SelectedIndex="{Binding SelectedSortIndex, Mode=TwoWay}" Width="140" Height="28" FontSize="11">
+                            <ComboBoxItem Content="Terbaru"/>
+                            <ComboBoxItem Content="Terlama"/>
+                            <ComboBoxItem Content="Terbesar"/>
+                            <ComboBoxItem Content="Terkecil"/>
+                            <ComboBoxItem Content="Nama A-Z"/>
+                            <ComboBoxItem Content="Nama Z-A"/>
+                        </ComboBox>
+                    </StackPanel>
+                    
+                    <!-- File DataGrid / ListView -->
+                    <ListView x:Name="LvCleanFiles" Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}" Background="Transparent" BorderThickness="0" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Width="40">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Style="{StaticResource NexusCheckBoxStyle}" IsChecked="{Binding Checked, Mode=TwoWay}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Nama" Width="300" DisplayMemberBinding="{Binding Name}"/>
+                                <GridViewColumn Header="Ext" Width="60">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{Binding ExtBg}" CornerRadius="4" Padding="6,2,6,2">
+                                                <TextBlock Text="{Binding Ext}" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Ukuran" Width="90" DisplayMemberBinding="{Binding SizeDisplay}"/>
+                                <GridViewColumn Header="Umur" Width="80">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding AgeDisplay}" Foreground="{Binding AgeFg}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Target" Width="150" DisplayMemberBinding="{Binding TargetFolder}"/>
+                                <GridViewColumn Header="Status" Width="80">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusFg}" FontWeight="SemiBold"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    
+                    <!-- Progress & Action Button -->
+                    <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                        <ProgressBar x:Name="ProgCleanBar" Style="{StaticResource NexusProgressBarStyle}" Value="{Binding ProgressValue}" Height="5" Visibility="{Binding IsProgressVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="LblCleanProgressText" Text="{Binding ProgressText}" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,8"/>
+                        <Button x:Name="BtnCleanExecute" Command="{Binding ExecuteCleanCommand}" Content="{Binding ExecuteButtonText}" Height="42" Cursor="Hand">
+                            <Button.Style>
+                                <Style TargetType="{x:Type Button}" BasedOn="{StaticResource NexusDangerButtonStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedCount}" Value="0">
+                                            <Setter Property="Background" Value="{DynamicResource NexusAccentRest}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource NexusAccentRest}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            
+            <GridSplitter Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent" Cursor="SizeWE" ResizeBehavior="PreviousAndNext"/>
+            
+            <!-- Right Preview Panel -->
+            <Border x:Name="PnlPreview" Style="{StaticResource NexusCardStyle}" Grid.Column="2" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <Border x:Name="ImgPreviewBorder" Background="{DynamicResource NexusSurfaceSecondary}" CornerRadius="10" Margin="0,0,0,10">
+                        <Grid>
+                            <Image x:Name="ImgPreview" Source="{Binding PreviewImage}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+                                <Image.Style>
+                                    <Style TargetType="Image">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="MaxWidth" Value="220"/>
+                                        <Setter Property="MaxHeight" Value="220"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="JPG">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="JPEG">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="PNG">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="GIF">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="BMP">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SelectedItem.Ext}" Value="WEBP">
+                                                <Setter Property="MaxWidth" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                                <Setter Property="MaxHeight" Value="{x:Static sys:Double.PositiveInfinity}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding PreviewImage}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Image.Style>
+                            </Image>
+
+                            <Border x:Name="PreviewFileFallback" Width="60" Height="60" CornerRadius="18" Background="{DynamicResource NexusSurfaceSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding PreviewImage}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                            <DataTrigger Binding="{Binding IsPreviewEmpty}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock x:Name="IconCleanPreviewFallback" services:NexusIcon.Glyph="File" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+                            </Border>
+                            
+                            <StackPanel x:Name="PreviewEmptyState" Visibility="{Binding IsPreviewEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <Border Width="60" Height="60" CornerRadius="18" Background="{DynamicResource NexusSurfaceSecondary}" Margin="0,0,0,14" HorizontalAlignment="Center">
+                                    <TextBlock x:Name="IconCleanPreviewEmpty" services:NexusIcon.Glyph="Document" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+                                </Border>
+                                <TextBlock x:Name="PreviewEmptyTitle" Text="Belum ada file dipilih" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock x:Name="PreviewEmptyHint" Text="Pilih file untuk melihat preview dan detailnya." FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="200"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    
+                    <TextBlock x:Name="TxtPreviewInfo" Grid.Row="1" Text="{Binding PreviewInfoText}" Visibility="{Binding IsPreviewInfoVisible, Converter={StaticResource BooleanToVisibilityConverter}}" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                    
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="BtnOpenFile" Grid.Column="0" Style="{StaticResource NexusButtonStyle}" Command="{Binding OpenFileCommand}" Content="Buka File" Height="36" Cursor="Hand"/>
+                        <Button x:Name="BtnOpenFolder" Grid.Column="2" Style="{StaticResource NexusButtonStyle}" Command="{Binding OpenLogCommand}" Content="Buka Log" Height="36" Cursor="Hand"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,326 @@
+<UserControl x:Class="Nexus.App.Views.RapikanFileView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:services="clr-namespace:Nexus.App.Services"
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="900">
+    <Grid x:Name="ModuleRapikanFile" Visibility="Visible">
+        <Grid Style="{StaticResource NexusPageRegionStyle}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- BAGIAN ATAS: Header, Folder, & Tombol Aksi -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="Auto" MinWidth="260"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Panel Kiri: Pilih Folder -->
+                    <Border x:Name="RapikanPanelFolder" Style="{StaticResource NexusCardStyle}" Padding="15">
+                        <StackPanel>
+                            <TextBlock x:Name="TxtRapikanFolderLabel" Text="Pilih Folder Target" Style="{StaticResource NexusTypographyBody}" Foreground="{DynamicResource NexusBrushTextPrimary}" Margin="0,0,0,10"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TargetPathTextBox" Style="{StaticResource NexusTextBoxStyle}" Grid.Column="0" Text="{Binding TargetPath, Mode=TwoWay}" Margin="0,0,10,0" IsReadOnly="True"/>
+                                <Button x:Name="BrowseFolderButton" Grid.Column="1" Style="{StaticResource NexusButtonStyle}" Command="{Binding BrowseFolderCommand}" IsEnabled="{Binding CanBrowse}" Height="36">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock services:NexusIcon.Glyph="Folder" FontSize="13" FontWeight="Normal" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Pilih Folder" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Panel Kanan: Tombol Aksi -->
+                    <Border x:Name="RapikanPanelAction" Grid.Column="2" Style="{StaticResource NexusCardStyle}" Padding="15">
+                        <StackPanel>
+                            <!-- Primary Main Action -->
+                            <Button x:Name="StartOrganizeButton" Style="{StaticResource NexusPrimaryButtonStyle}" Command="{Binding StartRapikanCommand}" IsEnabled="{Binding CanStart}" Height="40" Margin="0,0,0,10" Cursor="Hand">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock services:NexusIcon.Glyph="Play" FontSize="14" FontWeight="Normal" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="MULAI RAPIKAN SEKARANG" Style="{StaticResource NexusTypographyBodyStrong}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            
+                            <!-- Secondary Action -->
+                            <Button x:Name="UndoButton" Style="{StaticResource NexusSecondaryButtonStyle}" Command="{Binding UndoCommand}" Height="36">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock services:NexusIcon.Glyph="Undo" FontSize="13" FontWeight="Normal" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="UNDO TERAKHIR" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+            </StackPanel>
+
+            <!-- BAGIAN BAWAH: Statistik & Log Aktivitas (Expanded Height Layout) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60*" MinWidth="400"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="40*" MinWidth="300"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Panel Kiri: Statistik Dinamis (Full Height Layout) -->
+                <Border x:Name="RapikanPanelStats" Grid.Column="0" Style="{StaticResource NexusCardStyle}" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="28" Height="28" CornerRadius="{StaticResource NexusRadiusSmall}" Background="{DynamicResource NexusBrushCardIconBg}" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="IconRapikanStatsAccent" services:NexusIcon.Glyph="Stats" FontSize="14" Foreground="{DynamicResource NexusBrushAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock x:Name="TxtRapikanStatsLabel" Text="{Binding StatsLabelText}" Style="{StaticResource NexusTypographyBody}" Foreground="{DynamicResource NexusBrushTextPrimary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            
+                            <!-- Small Ghost Utility Button -->
+                            <Button x:Name="ResetStatsButton" Grid.Column="1" Style="{StaticResource NexusToolbarButtonStyle}" Command="{Binding ResetStatsCommand}" IsEnabled="{Binding CanResetStats}" Height="28">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock services:NexusIcon.Glyph="Refresh" FontSize="11" FontWeight="Normal" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Reset" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource NexusScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" Background="Transparent">
+                            <StackPanel>
+                                <ItemsControl x:Name="RapikanCategoryCards" ItemsSource="{Binding StatCards}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel IsItemsHost="True"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Category}" Value="TotalFile">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Category}" Value="TotalSize">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="152" Height="90" Style="{StaticResource NexusCardStyle}" Padding="10" Margin="4">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Width="46" Height="46" CornerRadius="{StaticResource NexusRadiusSmall}" Background="{DynamicResource NexusBrushCardIconBg}" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                        <TextBlock services:NexusIcon.Glyph="{Binding IconName}" FontSize="28" FontWeight="Normal" Foreground="{DynamicResource NexusBrushAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" Foreground="{DynamicResource NexusBrushTextSecondary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}"/>
+                                                        <TextBlock Style="{StaticResource NexusTypographySubtitle}" Foreground="{DynamicResource NexusBrushTextPrimary}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"><Run Text="{Binding ValueText}"/><Run Text=" file"/></TextBlock>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border x:Name="RapikanSummaryPanel" Style="{StaticResource NexusCardStyle}" Padding="14,12" Margin="4,12,4,4">
+                                    <StackPanel>
+                                        <TextBlock Text="Ringkasan" Style="{StaticResource NexusTypographyBody}" Foreground="{DynamicResource NexusBrushTextPrimary}" Margin="0,0,0,8"/>
+                                        <ItemsControl x:Name="RapikanSummaryItems" ItemsSource="{Binding StatCards}">
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Category}" Value="TotalFile">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Category}" Value="TotalSize">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Foreground="{DynamicResource NexusBrushTextSecondary}">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock" BasedOn="{StaticResource NexusTypographyCaption}">
+                                                                    <Setter Property="Text" Value="{Binding Label}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Category}" Value="TotalSize">
+                                                                            <Setter Property="Text" Value="Total Ukuran"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="1" Style="{StaticResource NexusTypographySubtitle}" Foreground="{DynamicResource NexusBrushTextPrimary}"><Run Text="{Binding ValueText}"/><Run><Run.Style><Style TargetType="Run"><Setter Property="Text" Value=""/><Style.Triggers><DataTrigger Binding="{Binding Category}" Value="TotalFile"><Setter Property="Text" Value=" file"/></DataTrigger></Style.Triggers></Style></Run.Style></Run></TextBlock>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Panel Kanan: Log Aktivitas Presisi (Dense Layout & Level Color) -->
+                <Border x:Name="RapikanPanelLog" Grid.Column="2" Style="{StaticResource NexusCardStyle}" Padding="15" MinWidth="300">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="28" Height="28" CornerRadius="{StaticResource NexusRadiusSmall}" Background="{DynamicResource NexusBrushCardIconBg}" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="IconRapikanLogAccent" services:NexusIcon.Glyph="RecentActivity" FontSize="14" Foreground="{DynamicResource NexusBrushAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock x:Name="TxtRapikanLogLabel" Text="Log Aktivitas" Style="{StaticResource NexusTypographyBody}" Foreground="{DynamicResource NexusBrushTextPrimary}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            
+                            <!-- Small Ghost Utility Button -->
+                            <Button x:Name="ClearLogButton" Grid.Column="1" Style="{StaticResource NexusToolbarButtonStyle}" Command="{Binding ClearLogCommand}" Height="28">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock services:NexusIcon.Glyph="Delete" FontSize="11" FontWeight="Normal" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Bersihkan" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Dense & Monospace PowerShell Log List -->
+                        <ListBox x:Name="ListBoxRapikanLog" Style="{StaticResource NexusListBoxStandard}" Grid.Row="1" ItemsSource="{Binding LogEntries}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Message}" Foreground="{Binding Color}" FontFamily="Consolas, Cascadia Code, Segoe UI" FontSize="11" TextWrapping="Wrap" Padding="6,2"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- Secondary Action Button -->
+                        <Button x:Name="OpenLogButton" Grid.Row="2" Style="{StaticResource NexusSecondaryButtonStyle}" Command="{Binding OpenLogFileCommand}" Height="36" Margin="0,12,0,0">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock services:NexusIcon.Glyph="Document" FontSize="13" FontWeight="Normal" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="BUKA LOG FILE" Style="{StaticResource NexusTypographyCaption}" FontWeight="{StaticResource NexusTypographyStrongWeight}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Persistent process status footer -->
+            <Border x:Name="RapikanStatusFooter" Grid.Row="2" Style="{StaticResource NexusCardStyle}" Padding="14,10" Margin="0,16,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="240"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="38" Height="38" CornerRadius="{StaticResource NexusRadiusSmall}" Background="{DynamicResource NexusBrushCardIconBg}" Margin="0,0,12,0">
+                        <Grid>
+                            <TextBlock services:NexusIcon.Glyph="{Binding StatusIconGlyph}" FontSize="16" FontWeight="Normal" Foreground="{DynamicResource NexusBrushAccent}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <Border RenderTransformOrigin="0.5,0.5" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Border.Triggers>
+                                    <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle" From="0" To="360" Duration="0:0:1" RepeatBehavior="Forever"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Border.Triggers>
+                                <Border.RenderTransform>
+                                    <RotateTransform Angle="0"/>
+                                </Border.RenderTransform>
+                                <TextBlock services:NexusIcon.Glyph="Sync" FontSize="16" FontWeight="Normal" Foreground="{DynamicResource NexusBrushAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock x:Name="LblRapikanPhase" Text="{Binding PhaseText}" Style="{StaticResource NexusTypographyBody}" Foreground="{DynamicResource NexusBrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="LblRapikanStatus" Grid.Column="0" Text="{Binding StatusText}" Style="{StaticResource NexusTypographyCaption}" Foreground="{DynamicResource NexusBrushTextSecondary}" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="LblRapikanCurrentFile" Grid.Column="1" Text="{Binding CurrentFileText}" Foreground="{DynamicResource NexusBrushTextSecondary}" TextTrimming="CharacterEllipsis" Margin="10,0,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource NexusTypographyCaption}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsProgressVisible}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </StackPanel>
+
+                    <ProgressBar Grid.Column="2" Style="{StaticResource NexusProgressBarStyle}" Value="{Binding ProgressPercentValue}" Minimum="0" Maximum="100" Height="8" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ProgressPercentTextBlock" Grid.Column="3" Text="{Binding ProgressPercentText}" FontSize="{StaticResource NexusFontLabel}" FontWeight="SemiBold" Foreground="{DynamicResource NexusBrushTextPrimary}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="14,0,0,0"/>
+                    <TextBlock x:Name="ElapsedTextBlock" Grid.Column="4" Text="{Binding ElapsedText}" FontSize="{StaticResource NexusFontLabel}" Foreground="{DynamicResource NexusBrushTextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="16,0,0,0"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

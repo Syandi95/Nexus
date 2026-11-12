@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin-*/**;obj-*/**</DefaultItemExcludes>
+    <NoWarn>$(NoWarn);CA1416;CS0067;CS8600;CS8602;CS8604</NoWarn>
+  </PropertyGroup>
+</Project>

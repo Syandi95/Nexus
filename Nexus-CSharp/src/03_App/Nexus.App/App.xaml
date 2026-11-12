@@ -1,0 +1,33 @@
+<Application x:Class="Nexus.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Nexus.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Tokens/PrimitiveTokens.xaml"/>
+                <ResourceDictionary Source="Themes/Tokens/SharedMetrics.xaml"/>
+                <ResourceDictionary Source="Themes/Semantic/DarkSemanticTheme.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Accessibility.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Buttons.xaml"/>
+                <ResourceDictionary Source="Themes/Components/InputControls.xaml"/>
+                <ResourceDictionary Source="Themes/Components/SegmentedControl.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Surfaces.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Feedback.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Overlays.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Menus.xaml"/>
+                <ResourceDictionary Source="Themes/Components/Layout.xaml"/>
+                <ResourceDictionary Source="Themes/Compatibility/LegacyBrushAliases.xaml"/>
+                <ResourceDictionary Source="Themes/Compatibility/LegacyStyleAliases.xaml"/>
+                <ResourceDictionary Source="Themes/SharedStyles.xaml"/>
+                <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
+                <ResourceDictionary Source="Controls/SettingsCard/SettingsCard.xaml"/>
+                <ResourceDictionary Source="Themes/DshDesignTokens.xaml"/>
+                <ResourceDictionary Source="Themes/DshIcons.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Canonical Value Converters -->
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

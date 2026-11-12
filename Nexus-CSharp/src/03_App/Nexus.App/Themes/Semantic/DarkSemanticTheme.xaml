@@ -1,0 +1,113 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="../Tokens/PrimitiveTokens.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+    <SolidColorBrush x:Key="NexusSurfaceCanvas" Color="{StaticResource NexusPrimitiveColor202020}"/>
+    <SolidColorBrush x:Key="NexusPdfTabStripBackground" Color="{StaticResource NexusPrimitiveColor333333}"/>
+    <SolidColorBrush x:Key="NexusPdfPageBackground" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusSurfaceBase" Color="{StaticResource NexusPrimitiveColor272727}"/>
+    <SolidColorBrush x:Key="NexusSurfaceRaised" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusSurfaceOverlay" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusBackdropOverlay" Color="{StaticResource NexusPrimitiveColor80000000}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonRest" Color="{StaticResource NexusPrimitiveColorCCFFFFFF}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonHover" Color="{StaticResource NexusPrimitiveColorE6FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonPressed" Color="{StaticResource NexusPrimitiveColorF2FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderBackground" Color="{StaticResource NexusPrimitiveColor1CF59E0B}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderBorder" Color="{StaticResource NexusPrimitiveColor40F59E0B}"/>
+    <SolidColorBrush x:Key="NexusSoftFolderForeground" Color="{StaticResource NexusPrimitiveColorF59E0B}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteBackground" Color="{StaticResource NexusPrimitiveColor1CEF4444}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteBorder" Color="{StaticResource NexusPrimitiveColor40EF4444}"/>
+    <SolidColorBrush x:Key="NexusSoftDeleteForeground" Color="{StaticResource NexusPrimitiveColorEF4444}"/>
+    <SolidColorBrush x:Key="NexusSurfaceSunken" Color="{StaticResource NexusPrimitiveColor2AFFFFFF}"/>
+    <SolidColorBrush x:Key="NexusForegroundPrimary" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusForegroundSecondary" Color="{StaticResource NexusPrimitiveColorC5FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusForegroundDisabled" Color="{StaticResource NexusPrimitiveColorC5FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusForegroundOnAccent" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusStrokeSubtle" Color="{StaticResource NexusPrimitiveColor333333}"/>
+    <SolidColorBrush x:Key="NexusStrokeDefault" Color="{StaticResource NexusPrimitiveColor333333}"/>
+    <SolidColorBrush x:Key="NexusContentBorder" Color="{StaticResource NexusPrimitiveColor333333}"/>
+    <SolidColorBrush x:Key="NexusModalBackdrop" Color="{StaticResource NexusPrimitiveColor66000000}"/>
+    <SolidColorBrush x:Key="NexusComparisonDivider" Color="{StaticResource NexusPrimitiveColor33FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusComparisonHandle" Color="{StaticResource NexusPrimitiveColor66FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusComparisonGlyph" Color="{StaticResource NexusPrimitiveColorAA101010}"/>
+    <SolidColorBrush x:Key="NexusRoundActionHover" Color="{StaticResource NexusPrimitiveColor20FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusRoundActionPressed" Color="{StaticResource NexusPrimitiveColor40FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusStrokeStrong" Color="{StaticResource NexusPrimitiveColorC5FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusStrokeFocus" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusAccentPrimary" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusAccentRest" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusAccentHover" Color="{StaticResource NexusPrimitiveColor38BAFF}"/>
+    <SolidColorBrush x:Key="NexusAccentPressed" Color="{StaticResource NexusPrimitiveColor0091E6}"/>
+    <SolidColorBrush x:Key="NexusAccentSelected" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusInfoForeground" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusInfoBackground" Color="{StaticResource NexusPrimitiveColor202020}"/>
+    <SolidColorBrush x:Key="NexusInfoStroke" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusSuccessForeground" Color="{StaticResource NexusPrimitiveColor10B981}"/>
+    <SolidColorBrush x:Key="NexusSuccessBackground" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusSuccessStroke" Color="{StaticResource NexusPrimitiveColor10B981}"/>
+    <SolidColorBrush x:Key="NexusWarningForeground" Color="{StaticResource NexusPrimitiveColor60A5FA}"/>
+    <SolidColorBrush x:Key="NexusWarningBackground" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusWarningStroke" Color="{StaticResource NexusPrimitiveColor60A5FA}"/>
+    <SolidColorBrush x:Key="NexusErrorForeground" Color="{StaticResource NexusPrimitiveColorEF4444}"/>
+    <SolidColorBrush x:Key="NexusErrorBackground" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusErrorStroke" Color="{StaticResource NexusPrimitiveColorEF4444}"/>
+    <SolidColorBrush x:Key="NexusFocusOuter" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <SolidColorBrush x:Key="NexusFocusInner" Color="{StaticResource NexusPrimitiveColor252525}"/>
+    <SolidColorBrush x:Key="NexusScrim" Color="{StaticResource NexusPrimitiveColor00202020}"/>
+    <!-- Temporary Stage 2.1 compatibility shim; remove with the dedicated alias layer. -->
+    <SolidColorBrush x:Key="NexusBrushStatusInfo" Color="{StaticResource NexusPrimitiveColor4CC2FF}"/>
+    <!-- Image-content overlay roles preserve the same palette across themes. -->
+    <SolidColorBrush x:Key="NexusImageNavigationForeground" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationRest" Color="{StaticResource NexusPrimitiveColor50000000}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationStroke" Color="{StaticResource NexusPrimitiveColor20FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationHover" Color="{StaticResource NexusPrimitiveColor65000000}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationHoverStroke" Color="{StaticResource NexusPrimitiveColor28FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationPressed" Color="{StaticResource NexusPrimitiveColor85000000}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationDisabled" Color="{StaticResource NexusPrimitiveColor35000000}"/>
+    <SolidColorBrush x:Key="NexusImageNavigationDisabledStroke" Color="{StaticResource NexusPrimitiveColor15FFFFFF}"/>
+
+    <!-- ============================================================ -->
+    <!-- DEEPSEEK HARNESS (DSH) DARK THEME BRUSHES                    -->
+    <!-- ============================================================ -->
+    <SolidColorBrush x:Key="DshBgBaseBrush" Color="{StaticResource NexusPrimitiveColor151517}"/>
+    <SolidColorBrush x:Key="DshSidebarBgBrush" Color="{StaticResource NexusPrimitiveColor1B1B1C}"/>
+    <SolidColorBrush x:Key="DshSidebarHoverBrush" Color="{StaticResource NexusPrimitiveColor2C2C2E}"/>
+    <SolidColorBrush x:Key="DshSidebarActiveBrush" Color="{StaticResource NexusPrimitiveColor43454A}"/>
+    <SolidColorBrush x:Key="DshInputMajorBgBrush" Color="{StaticResource NexusPrimitiveColor2C2C2E}"/>
+    <SolidColorBrush x:Key="DshBubbleBgBrush" Color="{StaticResource NexusPrimitiveColor2C2C2E}"/>
+    <SolidColorBrush x:Key="DshCardBgBrush" Color="{StaticResource NexusPrimitiveColor212123}"/>
+    <SolidColorBrush x:Key="DshBorderL1Brush" Color="{StaticResource NexusPrimitiveColor0FFFFFFF}"/>
+    <SolidColorBrush x:Key="DshBorderL2Brush" Color="{StaticResource NexusPrimitiveColor1FFFFFFF}"/>
+    <SolidColorBrush x:Key="DshBorderL3Brush" Color="{StaticResource NexusPrimitiveColor28FFFFFF}"/>
+    <SolidColorBrush x:Key="DshTextPrimaryBrush" Color="{StaticResource NexusPrimitiveColorF9FAFB}"/>
+    <SolidColorBrush x:Key="DshTextSecondaryBrush" Color="{StaticResource NexusPrimitiveColorCFD3D6}"/>
+    <SolidColorBrush x:Key="DshTextTertiaryBrush" Color="{StaticResource NexusPrimitiveColorADB2B8}"/>
+    <SolidColorBrush x:Key="DshAccentPrimaryBrush" Color="{StaticResource NexusPrimitiveColor5686FE}"/>
+    <SolidColorBrush x:Key="DshAccentHoverBrush" Color="{StaticResource NexusPrimitiveColor7AAAFF}"/>
+    <SolidColorBrush x:Key="DshInteractiveHoverBrush" Color="{StaticResource NexusPrimitiveColor14FFFFFF}"/>
+    <SolidColorBrush x:Key="DshInteractiveActiveBrush" Color="{StaticResource NexusPrimitiveColor24FFFFFF}"/>
+    <SolidColorBrush x:Key="DshDiffAddedBgBrush" Color="{StaticResource NexusPrimitiveColor1F3124}"/>
+    <SolidColorBrush x:Key="DshDiffAddedMarkerBrush" Color="{StaticResource NexusPrimitiveColor41C977}"/>
+    <SolidColorBrush x:Key="DshDiffDeletedBgBrush" Color="{StaticResource NexusPrimitiveColor3C1F1B}"/>
+    <SolidColorBrush x:Key="DshDiffDeletedMarkerBrush" Color="{StaticResource NexusPrimitiveColorFA423E}"/>
+    <SolidColorBrush x:Key="DshReasoningBgBrush" Color="{StaticResource NexusPrimitiveColor10FFFFFF}"/>
+    <SolidColorBrush x:Key="DshReasoningBorderBrush" Color="{StaticResource NexusPrimitiveColor1FFFFFFF}"/>
+
+    <!-- DSH Send Button Semantic Brushes (Dark Theme) -->
+    <SolidColorBrush x:Key="DshSendButtonActiveBgBrush" Color="{StaticResource NexusPrimitiveColor5686FE}"/>
+    <SolidColorBrush x:Key="DshSendButtonHoverBgBrush" Color="{StaticResource NexusPrimitiveColor7AAAFF}"/>
+    <SolidColorBrush x:Key="DshSendButtonDisabledBgBrush" Color="{StaticResource NexusPrimitiveColor243354}"/>
+    <SolidColorBrush x:Key="DshSendButtonActiveIconBrush" Color="{StaticResource NexusPrimitiveWhite}"/>
+    <SolidColorBrush x:Key="DshSendButtonDisabledIconBrush" Color="{StaticResource NexusPrimitiveColor799DE0}"/>
+    <SolidColorBrush x:Key="DshSendButtonBorderBrush" Color="{StaticResource NexusPrimitiveColor00FFFFFF}"/>
+
+    <!-- Nexus Syntax Highlighting Tokens (Dark Theme) -->
+    <SolidColorBrush x:Key="NexusSyntaxKeywordBrush" Color="{StaticResource NexusPrimitiveColor569CD6}"/>
+    <SolidColorBrush x:Key="NexusSyntaxStringBrush" Color="{StaticResource NexusPrimitiveColorCE9178}"/>
+    <SolidColorBrush x:Key="NexusSyntaxCommentBrush" Color="{StaticResource NexusPrimitiveColor6A9955}"/>
+    <SolidColorBrush x:Key="NexusSyntaxNumberBrush" Color="{StaticResource NexusPrimitiveColorB5CEA8}"/>
+    <SolidColorBrush x:Key="NexusSyntaxTypeBrush" Color="{StaticResource NexusPrimitiveColor4EC9B0}"/>
+    <SolidColorBrush x:Key="NexusSyntaxPlainTextBrush" Color="{StaticResource NexusPrimitiveColorD4D4D4}"/>
+</ResourceDictionary>

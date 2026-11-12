@@ -1,0 +1,123 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:behaviors="clr-namespace:Nexus.App.Behaviors">
+    <Style x:Key="NexusSegmentedItemStyle" TargetType="{x:Type ListBoxItem}">
+        <Setter Property="MinHeight" Value="{DynamicResource NexusHeightCompact}"/>
+        <Setter Property="Padding" Value="16,6"/>
+        <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/>
+        <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                    <Border x:Name="ItemChrome"
+                            Padding="{TemplateBinding Padding}"
+                            Background="Transparent"
+                            CornerRadius="{DynamicResource NexusRadiusMedium}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ItemChrome"
+                                    Property="Background"
+                                    Value="{DynamicResource NexusSurfaceSunken}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="ItemChrome"
+                                    Property="Background"
+                                    Value="{DynamicResource NexusAccentRest}"/>
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource NexusForegroundOnAccent}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource NexusForegroundDisabled}"/>
+                            <Setter TargetName="ItemChrome" Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="NexusSegmentedControlStyle" TargetType="{x:Type ListBox}">
+        <Setter Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeDefault}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="2"/>
+        <Setter Property="ItemContainerStyle" Value="{StaticResource NexusSegmentedItemStyle}"/>
+        <Setter Property="behaviors:SegmentedSelectionBehavior.IsSegmented" Value="True"/>
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ListBox}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource NexusRadiusLarge}"
+                            Padding="{TemplateBinding Padding}">
+                        <ItemsPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="NexusSegmentedRadioButtonStyle" TargetType="{x:Type RadioButton}">
+        <Setter Property="Height" Value="34"/>
+        <Setter Property="Padding" Value="12,0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource NexusForegroundSecondary}"/>
+        <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RadioButton}">
+                    <Border x:Name="Segment"
+                            Margin="1" Padding="{TemplateBinding Padding}" CornerRadius="7"
+                            Background="{TemplateBinding Background}"
+                            TextElement.Foreground="{TemplateBinding Foreground}"
+                            TextElement.FontWeight="{TemplateBinding FontWeight}"
+                            TextElement.FontFamily="{TemplateBinding FontFamily}"
+                            TextElement.FontSize="{TemplateBinding FontSize}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Segment" Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Segment" Property="Background" Value="{DynamicResource NexusAccentPrimary}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource NexusForegroundOnAccent}"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.38"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

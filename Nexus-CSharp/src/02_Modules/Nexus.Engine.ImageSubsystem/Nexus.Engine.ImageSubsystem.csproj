@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\01_Foundation\Nexus.Foundation\Nexus.Foundation.csproj" />
+    <ProjectReference Include="..\..\00_Contracts\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\Nexus.Engine.ColorManagement\Nexus.Engine.ColorManagement.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.15" />
+    <PackageReference Include="System.Text.Json" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\DictionaryMatch_20K.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

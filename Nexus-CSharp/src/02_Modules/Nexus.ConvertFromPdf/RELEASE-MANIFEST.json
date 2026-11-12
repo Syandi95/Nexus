@@ -1,0 +1,108 @@
+﻿{
+    "date":  "2026-10-31",
+    "source_module":  "D:\\NEXUS\\Nexus-CSharp\\src\\02_Modules\\Nexus.ConvertFromPdf",
+    "runtime_mirror":  "D:\\NEXUS\\Engine\\Convert from PDF",
+    "checkpoint":  "D:\\NEXUS\\Engine\\NexusConverterEngine\\evidence\\2026-10-29-laporan-final\\CHECKPOINT.md",
+    "files":  [
+                  {
+                      "path":  "ClosedXML.dll",
+                      "sha256":  "EE486CD320CD25DE70E9C210B437F4038FB6BF6EFEF411FD118F99D5C9A14806"
+                  },
+                  {
+                      "path":  "ClosedXML.Parser.dll",
+                      "sha256":  "D63C63B69EE1EEF7DCBA04084B36564BF2D3FC7897C63365D4AEA1659D3980F8"
+                  },
+                  {
+                      "path":  "DocumentFormat.OpenXml.dll",
+                      "sha256":  "5A0C237A7467DDE85BCE402D124B7A07777531607837EB59EE62A9A79905FF43"
+                  },
+                  {
+                      "path":  "DocumentFormat.OpenXml.Framework.dll",
+                      "sha256":  "DDAE1F34E78971A731193E459C3AED54314F93A54D51C2457E12CCC169BF5663"
+                  },
+                  {
+                      "path":  "ExcelNumberFormat.dll",
+                      "sha256":  "D7C45B8E4E1027831E2FC8CDF941FAF51D28A66FEACFCAAA737DA73262E7B507"
+                  },
+                  {
+                      "path":  "NexusConverterEngine.deps.json",
+                      "sha256":  "28A2FC18277363F47841F083A0C842CB5D80E8CAE7EA55895E849CF9CC84C11D"
+                  },
+                  {
+                      "path":  "NexusConverterEngine.dll",
+                      "sha256":  "AC0086C2AF20547CF308D6D6F6BB9A6C00ED4D489BF33F606BA29708FEFD33E2"
+                  },
+                  {
+                      "path":  "NexusConverterEngine.exe",
+                      "sha256":  "3C9827430EA863057BFDD43B6531F91C28FB68200DF331917F3854C51B19C442"
+                  },
+                  {
+                      "path":  "NexusConverterEngine.pdb",
+                      "sha256":  "718AD3DA5B33F223671AB3B16B82E98CE2C7B3181189C0E26638D9214F4BE195"
+                  },
+                  {
+                      "path":  "NexusConverterEngine.runtimeconfig.json",
+                      "sha256":  "28329CF08F6505E73806B17558B187C02F0C1C516FE47EBFB7A013D082AAA306"
+                  },
+                  {
+                      "path":  "RBush.dll",
+                      "sha256":  "BEC6872C8B012C7940D1E13CE4B2B8287DFA7EADF330339016F52935F39C3302"
+                  },
+                  {
+                      "path":  "SixLabors.Fonts.dll",
+                      "sha256":  "E1E2F107E7C78FB859F1B23383107A125ACD8B3A7470140850DAA6F6F6C45D9F"
+                  },
+                  {
+                      "path":  "SkiaSharp.dll",
+                      "sha256":  "FD58D57FF4AE221B385449B90BD582B9CE47E56727CF024BCEE53660C5BFBE6E"
+                  },
+                  {
+                      "path":  "System.IO.Packaging.dll",
+                      "sha256":  "12DDC8BFF279FAD856551A74894DC52B80FA437D5D2B32722E70AE6899217B7C"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.Core.dll",
+                      "sha256":  "A06804BCFD61088C46CC4960C6D53C0C024B5D172533D48A01E54A2CF241CC9B"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.dll",
+                      "sha256":  "2DC86A0D0052C5A7D091280525FF8B5AEDE6AAD956DB166AF69AFDEFF197B6E5"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.DocumentLayoutAnalysis.dll",
+                      "sha256":  "15255F9D2565EF724785F2DB80EE93095EB19C29545FD8C9CC52377906B65288"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.Fonts.dll",
+                      "sha256":  "639EEB8C5B144E58FC53E1E668F5F93667368648D93E43E354F3F7D99E487415"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.Package.dll",
+                      "sha256":  "F39555A58BF3A4BCD8F834172AC46658A4498EAF6A6104E6B92B41B8A8E3E946"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.Tokenization.dll",
+                      "sha256":  "4253A6652E05A68851B275E81736492B0993DDE2C7CD40060C328389C0897967"
+                  },
+                  {
+                      "path":  "UglyToad.PdfPig.Tokens.dll",
+                      "sha256":  "AE7BE553F924771E097975E9D77C3620664C84A2DF8D9312571354525D93777A"
+                  },
+                  {
+                      "path":  "runtimes\\osx\\native\\libSkiaSharp.dylib",
+                      "sha256":  "A0E5707EEFBF23D96192C81481341BB2D1DA36FA1DE9364DF964586A53126950"
+                  },
+                  {
+                      "path":  "runtimes\\win-arm64\\native\\libSkiaSharp.dll",
+                      "sha256":  "D8EA5FF8D04BC7909A8AA38F7CD28962C6A6036E6683D0032B7AF999B6260F18"
+                  },
+                  {
+                      "path":  "runtimes\\win-x64\\native\\libSkiaSharp.dll",
+                      "sha256":  "2CA940B7C4621ECD27D2F07C5F46FAFA0375F493692CD4E6E1E66C07FBC8109A"
+                  },
+                  {
+                      "path":  "runtimes\\win-x86\\native\\libSkiaSharp.dll",
+                      "sha256":  "EF408A6D691ACCA4428926C58333EBE2A7358B31FC1DED55124ABCD969FAB925"
+                  }
+              ]
+}

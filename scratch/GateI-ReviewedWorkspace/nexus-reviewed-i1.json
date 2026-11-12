@@ -1,0 +1,27 @@
+{
+  "contract": "NEXUS-GATE-I-I1-REVIEWED-V1",
+  "root": "D:\\NEXUS\\scratch\\GateI-ReviewedWorkspace",
+  "profile_id": "gate-i-i1-reviewed-v1",
+  "targets": [
+    "Product/Alpha.cs",
+    "Product/Beta.cs"
+  ],
+  "files": {
+    "Product/Product.csproj": "48f46cbb242cbc5b01eed65d15007aa02c59083a0f0598f781ed81d00973511d",
+    "Tests/Tests.csproj": "fa681893d5c7a0142341d0622a1f9fec466a2a94df3feced0cd542c877534361",
+    "Tests/FixtureTests.cs": "9e30d54b82cce9936007be5b14de3aedcea35756bb767c56151c12ae23fe0acb",
+    "global.json": "b8deb5fba619f9d265ab4c38192c36dabd7fbc8cf6029f5523c0926487d27186",
+    "Directory.Build.props": "17284cb74605517cbec8a8153505da71a685b28694b67b5ef80608cd79b1c0ea",
+    "Directory.Build.targets": "17284cb74605517cbec8a8153505da71a685b28694b67b5ef80608cd79b1c0ea",
+    "Product/obj/project.assets.json": "faff56c2941a5fe2eabab300c009a024fb6357a8568c455583ae7bd725d483a8",
+    "Tests/obj/project.assets.json": "41629ee5bc9e757c9b92d8f55e63a382560a1a290453ee6762926d63180124d4",
+    "Product/obj/Product.csproj.nuget.g.props": "7ef423d194e00d89d17e5be471cb4f80391f52ca1fddde6551bf4743f899417a",
+    "Product/obj/Product.csproj.nuget.g.targets": "971cc9b535384849b5c661d776cd7a80833a416265e32e8968e06c367368b8b5",
+    "Tests/obj/Tests.csproj.nuget.g.props": "fb0145f20398f81c18fd005e83060491968674041b0ae00a43eb11595ac5d81a",
+    "Tests/obj/Tests.csproj.nuget.g.targets": "b43b9923b2c22513c3cb25f2799c7b7d3121869ced02d4674909ad6b7e78d1cc",
+    "Product/Alpha.cs": "15e3d846969c7db78fb23b7624edf0e85aba4af6152a45d929817fdb26f45344",
+    "Product/Beta.cs": "48ebd60619fd471788c5478ae1fdae6b4af8ef6ce8b384172dd5f81ad301408e",
+    "Product/Gamma.cs": "7d8b643b01f30746643967d41ecf8f7ce6a39573a372d7f0b92e2f771a91a8d4"
+  },
+  "sdk_sha256": "76e6472063f53379b86fe8370203ab6c46c75d27f405b722845f0e495d8f5fd0"
+}

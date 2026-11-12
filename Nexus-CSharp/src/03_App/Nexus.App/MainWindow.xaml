@@ -1,0 +1,499 @@
+<Window x:Class="Nexus.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewmodels="clr-namespace:Nexus.App.ViewModels"
+        xmlns:views="clr-namespace:Nexus.App.Views"
+        xmlns:services="clr-namespace:Nexus.App.Services"
+        mc:Ignorable="d"
+        Title="Nexus" Width="1280" Height="800" MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
+        Background="{DynamicResource WindowBackgroundBrush}" AllowsTransparency="False"
+        SnapsToDevicePixels="True" UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="44"
+                      ResizeBorderThickness="6"
+                      CornerRadius="0"
+                      GlassFrameThickness="1"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+    <Window.Resources>
+        <DropShadowEffect x:Key="WindowDropShadow" BlurRadius="16" ShadowDepth="1" Direction="270" Opacity="0.14" Color="#000000"/>
+
+        <DataTemplate DataType="{x:Type viewmodels:HomeViewModel}">
+            <views:HomeView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type viewmodels:ConversationViewModel}">
+            <views:ConversationView />
+        </DataTemplate>
+        <views:FileManagementView x:Key="FileManagementViewInstance" />
+        <DataTemplate DataType="{x:Type viewmodels:FileManagementViewModel}">
+            <ContentControl Content="{StaticResource FileManagementViewInstance}" />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type viewmodels:PdfWorkspaceViewModel}">
+            <views:PdfWorkspaceView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type viewmodels:ImageSubsystemViewModel}">
+            <views:ImageSubsystemView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type viewmodels:SettingsViewModel}">
+            <views:SettingsView />
+        </DataTemplate>
+    </Window.Resources>
+
+    <Border x:Name="WindowRoot" Padding="0" Background="{DynamicResource NexusSurfaceCanvas}">
+        <Border x:Name="MainBorder" Background="{DynamicResource NexusSurfaceCanvas}" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource BorderSubtleBrush}">
+        <Grid x:Name="MainGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="44"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- HEADER / TITLE BAR -->
+            <Border x:Name="TitleBar" Grid.Row="0" Grid.ColumnSpan="2" Background="Transparent" Padding="0">
+                <Grid>
+                    <!-- Left: App Brand -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock services:NexusIcon.Glyph="Home" FontSize="15" Foreground="{DynamicResource NexusAccentPrimary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="TitleText" Text="Nexus" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Right: Theme Toggle & Windows 11 Caption Controls -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch">
+                        <!-- Day & Night Theme Toggle (Quick Switch) -->
+                        <Border x:Name="ThemeToggle" Width="64" Height="26" Margin="0,0,12,0"
+                                WindowChrome.IsHitTestVisibleInChrome="True"
+                                CornerRadius="13" Cursor="Hand"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource SurfaceSecondaryBrush}"
+                                BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                PreviewMouseDown="ThemeToggle_PreviewMouseDown">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="32"/>
+                                    <ColumnDefinition Width="32"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Light icon (left) -->
+                                <TextBlock x:Name="ThemeToggleLightIcon" services:NexusIcon.Glyph="LightTheme"
+                                           FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5"/>
+                                <!-- Dark icon (right) -->
+                                <TextBlock x:Name="ThemeToggleDarkIcon" services:NexusIcon.Glyph="DarkTheme"
+                                           Grid.Column="1"
+                                           FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="1.0"/>
+                                <!-- Thumb -->
+                                <Border x:Name="ThemeToggleThumb" Grid.ColumnSpan="2" Width="20" Height="20" CornerRadius="10"
+                                        Background="{DynamicResource NexusAccentPrimary}"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        Margin="4,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Caption Buttons -->
+                        <Button x:Name="BtnMinimize" WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource NexusCaptionButtonStyle}" Click="BtnMinimize_Click" ToolTip="Minimize">
+                            <TextBlock x:Name="IconMinimize" services:NexusIcon.Glyph="Minimize" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Button>
+                        <Button x:Name="BtnMaximize" WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource NexusCaptionButtonStyle}" Click="BtnMaximize_Click" ToolTip="Maximize">
+                            <TextBlock x:Name="IconMaximizeRestore" services:NexusIcon.Glyph="Maximize" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Button>
+                        <Button x:Name="BtnClose" WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource NexusCaptionCloseButtonStyle}" Click="BtnClose_Click" ToolTip="Tutup">
+                            <TextBlock x:Name="IconClose" services:NexusIcon.Glyph="Close" FontSize="12"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- SIDEBAR v2 - Windows 11 Navigation Rail -->
+            <Border x:Name="SidebarBorder" Grid.Row="1" Grid.Column="0"
+                    Width="220" HorizontalAlignment="Left"
+                    Background="Transparent" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Top Header: Hamburger Toggle -->
+                    <Grid Grid.Row="0" Margin="4,4,4,6">
+                        <Button x:Name="BtnSidebarToggle" Width="40" Height="36"
+                                HorizontalAlignment="Left"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                Padding="0"
+                                Click="BtnSidebarToggle_Click"
+                                Style="{StaticResource NexusNavigationItemStyle}"
+                                ToolTip="Buka/Tutup Navigasi">
+                            <TextBlock x:Name="IconSidebarToggle" services:NexusIcon.Glyph="Menu" FontSize="16"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Navigation Items -->
+                    <StackPanel Grid.Row="1" Margin="0,0,0,0">
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="HomeNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="{DynamicResource NexusAccentSelected}"/>
+                            <Button x:Name="HomeNavButton" Tag="Home" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="Home"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="Home" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="Nexus Home" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="AiWorkspaceNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="Transparent"/>
+                            <Button x:Name="AiWorkspaceNavButton" Tag="AIWorkspace" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="AIWorkspace"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="AIWorkspace" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="AI Workspace" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="ImageToolsNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="Transparent"/>
+                            <Button x:Name="ImageToolsNavButton" Tag="RemoveBackground" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="ImageTools"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="ImageTools" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="Image Tools" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="PdfToolsNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="Transparent"/>
+                            <Button x:Name="PdfToolsNavButton" Tag="PdfTools" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="PdfTools"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="PDFPage" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="PDF Tools" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="FileManagementNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="Transparent"/>
+                            <Button x:Name="FileManagementNavButton" Tag="FileManagement" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="FileManagement"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="Folder" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="Manajemen File" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                    
+                    <!-- Footer: Settings -->
+                    <StackPanel Grid.Row="2" Margin="0,0,0,8">
+                        <Grid Margin="4,2,4,2">
+                            <Border x:Name="SettingsNavIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Panel.ZIndex="1"
+                                    Background="Transparent"/>
+                            <Button x:Name="SettingsNavButton" Tag="Pengaturan" Height="36" Padding="0"
+                                    Command="{Binding NavigateCommand}" CommandParameter="Pengaturan"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand" Style="{StaticResource NexusNavigationItemStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock services:NexusIcon.Glyph="Settings" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="Pengaturan" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="Normal" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </Grid>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            
+            <!-- MAIN CONTENT AREA (ChatGPT Desktop Layer with 12px rounded top-left corner) -->
+            <Border x:Name="ContentBorder" Grid.Row="1" Grid.Column="1"
+                    Background="{DynamicResource PageBackgroundBrush}"
+                    CornerRadius="12,0,0,0"
+                    BorderThickness="1,1,0,0"
+                    BorderBrush="{DynamicResource DshBorderL2Brush}"
+                    ClipToBounds="True">
+                <ContentControl Content="{Binding CurrentViewModel}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+            </Border>
+
+            <!-- SNACKBAR TOAST NOTIFICATION (Modern Windows 11 style from Nexus.UI Pack) -->
+            <Grid x:Name="SnackbarHost"
+                  Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+                  Panel.ZIndex="95"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Bottom"
+                  Width="364"
+                  Margin="0,0,16,16"
+                  Visibility="Collapsed"
+                  Opacity="0"
+                  IsHitTestVisible="True"
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="SnackbarTranslate" Y="30"/>
+                </Grid.RenderTransform>
+
+                <!-- Shadow caster border (no children -> crisp ClearType!) -->
+                <Border CornerRadius="8"
+                        Background="{DynamicResource NexusSurfaceOverlay}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#000000"/>
+                    </Border.Effect>
+                </Border>
+
+                <!-- Snackbar Card Content -->
+                <Border x:Name="SnackbarCard"
+                        Background="{DynamicResource NexusSurfaceOverlay}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="14,12"
+                        Width="364"
+                        MinHeight="64"
+                        TextOptions.TextFormattingMode="Display"
+                        TextOptions.TextRenderingMode="ClearType"
+                        UseLayoutRounding="True"
+                        SnapsToDevicePixels="True">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Icon Column -->
+                        <Border Grid.Column="0"
+                                Width="30" Height="30"
+                                CornerRadius="6"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="SnackbarIcon"
+                                       services:NexusIcon.Glyph="Check"
+                                       FontSize="16"
+                                       Foreground="{DynamicResource NexusSuccessStroke}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Content Column -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock x:Name="SnackbarTitle"
+                                       Text="Notifikasi"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource NexusForegroundPrimary}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="SnackbarMessage"
+                                       Text="Pesan notifikasi..."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource NexusForegroundSecondary}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,0"
+                                       LineHeight="16"/>
+                        </StackPanel>
+
+                        <!-- Close Button -->
+                        <Button Grid.Column="2"
+                                x:Name="SnackbarCloseButton"
+                                Click="SnackbarCloseButton_Click"
+                                Style="{StaticResource NexusIconButtonStyle}"
+                                Width="26" Height="26"
+                                Padding="0"
+                                VerticalAlignment="Center"
+                                ToolTip="Tutup">
+                            <TextBlock services:NexusIcon.Glyph="Close" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+                        </Button>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- DIALOG OVERLAY (shared for Exit, Module Switch, Unsaved Changes) -->
+            <Border x:Name="DialogOverlay" Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+                    Panel.ZIndex="100"
+                    Visibility="{Binding IsDialogVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    Background="#70000000" Focusable="True"
+                    PreviewMouseDown="DialogOverlay_PreviewMouseDown"
+                    PreviewKeyDown="DialogOverlay_PreviewKeyDown"
+                    IsVisibleChanged="DialogOverlay_IsVisibleChanged">
+                <Grid Width="460" MaxWidth="500"
+                      VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- Drop Shadow Caster only (empty, no text children -> prevents WPF text rasterization!) -->
+                    <Border CornerRadius="8"
+                            Background="{DynamicResource SurfacePrimaryBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="30" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#000000"/>
+                        </Border.Effect>
+                    </Border>
+
+                    <!-- Content Card (Standard Fluent WinUI 3 ContentDialog from Nexus.UI Pack) -->
+                    <Border x:Name="DialogCard"
+                            Background="{DynamicResource SurfacePrimaryBrush}"
+                            BorderBrush="{DynamicResource BorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="8"
+                            Padding="0"
+                            AutomationProperties.Name="{Binding DialogTitle}"
+                            KeyboardNavigation.TabNavigation="Cycle"
+                            RenderTransformOrigin="0.5,0.5"
+                            TextOptions.TextFormattingMode="Display"
+                            TextOptions.TextRenderingMode="ClearType"
+                            UseLayoutRounding="True"
+                            SnapsToDevicePixels="True">
+                        <Border.RenderTransform>
+                            <ScaleTransform ScaleX="1" ScaleY="1"/>
+                        </Border.RenderTransform>
+                        <Grid Focusable="False">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Body Area (Row 0): Clean Title & Description (No Icon) -->
+                            <StackPanel Grid.Row="0" Margin="24,24,24,20" Focusable="False">
+                                <TextBlock Text="{Binding DialogTitle}"
+                                           FontSize="20" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           TextWrapping="WrapWithOverflow"
+                                           Margin="0,0,0,12"/>
+
+                                <TextBlock Text="{Binding DialogDescription}"
+                                           FontSize="14"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           LineHeight="20"/>
+                            </StackPanel>
+
+                            <!-- Footer Bar (Row 1): 1px Top Separator + Stretched Button Grid -->
+                            <Border Grid.Row="1"
+                                    Padding="24"
+                                    BorderBrush="{DynamicResource BorderSubtleBrush}"
+                                    BorderThickness="0,1,0,0"
+                                    CornerRadius="0,0,8,8"
+                                    Focusable="False">
+                                <Grid Focusable="False">
+                                    <Grid.ColumnDefinitions>
+                                        <!-- Column 0: Primary Button (Left) -->
+                                        <ColumnDefinition x:Name="PrimaryColumn" Width="*" />
+                                        <!-- Column 1: First Spacer (8px if secondary visible, 0px otherwise) -->
+                                        <ColumnDefinition x:Name="FirstSpacer">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="{x:Type ColumnDefinition}">
+                                                    <Setter Property="Width" Value="8" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDialogSecondaryVisible}" Value="False">
+                                                            <Setter Property="Width" Value="0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
+                                        <!-- Column 2: Secondary Button (Center, collapsible) -->
+                                        <ColumnDefinition x:Name="SecondaryColumn">
+                                            <ColumnDefinition.Style>
+                                                <Style TargetType="{x:Type ColumnDefinition}">
+                                                    <Setter Property="Width" Value="*" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDialogSecondaryVisible}" Value="False">
+                                                            <Setter Property="Width" Value="0" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ColumnDefinition.Style>
+                                        </ColumnDefinition>
+                                        <!-- Column 3: Second Spacer (8px between buttons) -->
+                                        <ColumnDefinition x:Name="SecondSpacer" Width="8" />
+                                        <!-- Column 4: Close/Cancel Button (Right) -->
+                                        <ColumnDefinition x:Name="CloseColumn" Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 1. Close/Cancel Button (actions[0] for NavigationLifecycleTests) in Grid.Column="4" (Right) -->
+                                    <Button Grid.Column="4"
+                                            Content="{Binding DialogCancelText}"
+                                            Command="{Binding DialogCancelCommand}"
+                                            Style="{StaticResource NexusSecondaryButtonStyle}"
+                                            HorizontalAlignment="Stretch"
+                                            Height="36"
+                                            Cursor="Hand" />
+
+                                    <!-- 2. Secondary Button (actions[1] for NavigationLifecycleTests) in Grid.Column="2" (Center) -->
+                                    <Button x:Name="DialogSecondaryButton"
+                                            Grid.Column="2"
+                                            Content="{Binding DialogSecondaryText}"
+                                            Command="{Binding DialogSecondaryCommand}"
+                                            Style="{StaticResource NexusSecondaryButtonStyle}"
+                                            HorizontalAlignment="Stretch"
+                                            Height="36"
+                                            Visibility="{Binding IsDialogSecondaryVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                            Cursor="Hand" />
+
+                                    <!-- 3. Primary Button (actions[2] for NavigationLifecycleTests) in Grid.Column="0" (Left) -->
+                                    <Button x:Name="DialogPrimaryButton"
+                                            Grid.Column="0"
+                                            Content="{Binding DialogPrimaryText}"
+                                            Command="{Binding DialogPrimaryCommand}"
+                                            Style="{StaticResource NexusPrimaryButtonStyle}"
+                                            HorizontalAlignment="Stretch"
+                                            Height="36"
+                                            Cursor="Hand" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+    </Border>
+</Window>

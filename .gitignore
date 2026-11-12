@@ -1,0 +1,57 @@
+# ==============================================================================
+# NEXUS Root .gitignore
+# ==============================================================================
+
+# --- External / Large Runtime Dependencies & Local User Data (see AGENTS.md) ---
+/Engine/
+/Models/
+/nexus_data/
+/Backups/
+/OpenMausBot-main/
+/Nexus-CSharp/docs/archive/chat_history_backup/
+**/nexus_data/
+
+# --- .NET / Visual Studio Build Artifacts ---
+**/[Bb]in/
+**/[Oo]bj/
+**/bin-*/
+**/obj-*/
+**/.nexus-verification/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+publish/
+
+# --- Backups, Temporary Files & Logs ---
+*.bak
+*.bak-*
+*.tmp
+*.temp
+*.log
+*.swp
+*~
+
+# --- Python Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- OS / Editor Artifacts ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Secrets / Certificates (safety guard) ---
+.env
+.env.*
+*.pfx
+*.key

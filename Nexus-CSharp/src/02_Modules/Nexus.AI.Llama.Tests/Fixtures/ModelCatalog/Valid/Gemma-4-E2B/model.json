@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "gemma-4-e2b",
+  "displayName": "Gemma 4 E2B",
+  "ggufFile": "gemma.gguf",
+  "family": "Gemma"
+}

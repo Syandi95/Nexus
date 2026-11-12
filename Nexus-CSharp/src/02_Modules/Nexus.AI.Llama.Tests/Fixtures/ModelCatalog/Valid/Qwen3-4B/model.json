@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "qwen3-4b",
+  "displayName": "Qwen3 4B Instruct",
+  "ggufFile": "qwen.gguf",
+  "futureMetadata": {
+    "ignored": true
+  }
+}

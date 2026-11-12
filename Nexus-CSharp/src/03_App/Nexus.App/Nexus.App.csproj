@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\00_Contracts\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\..\01_Foundation\Nexus.Foundation\Nexus.Foundation.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Conversation\Nexus.Conversation.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.AI.EditingLite\Nexus.AI.EditingLite.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.FileUtilities\Nexus.FileUtilities.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.AI.Llama\Nexus.AI.Llama.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Engine.ImageSubsystem\Nexus.Engine.ImageSubsystem.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.PdfUtilities\Nexus.PdfUtilities.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Core.HomeSettings\Nexus.Core.HomeSettings.csproj" />
+    <ProjectReference Include="..\..\02_Modules\Nexus.Engine.ColorManagement\Nexus.Engine.ColorManagement.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ColorCode.Core" Version="2.0.15" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\Assets\MyImage.jpg" Link="Assets\MyImage.jpg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Fonts\FluentSystemIcons-Regular.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nexus.Integration.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

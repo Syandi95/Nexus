@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "activeModelId": "gemma-4-e2b",
+  "catalogNote": "unknown fields are forward-compatible",
+  "models": [
+    {
+      "id": "gemma-4-e2b",
+      "metadataFile": "Gemma-4-E2B/model.json",
+      "futureEntryField": "preserve-me"
+    },
+    {
+      "id": "qwen3-4b",
+      "metadataFile": "Qwen3-4B/model.json"
+    }
+  ]
+}
