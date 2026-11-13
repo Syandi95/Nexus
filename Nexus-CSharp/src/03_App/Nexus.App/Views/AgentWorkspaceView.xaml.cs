@@ -2573,9 +2573,9 @@ public partial class AgentWorkspaceView : UserControl
         }
     }
 
-    private async Task<List<Nexus.App.Services.BrowserAgent.InstalledBrowserExtensionInfo>> QueryRealInstalledExtensionsAsync()
+    private async Task<List<Nexus.Contracts.BrowserAgent.InstalledBrowserExtensionInfo>> QueryRealInstalledExtensionsAsync()
     {
-        var results = new List<Nexus.App.Services.BrowserAgent.InstalledBrowserExtensionInfo>();
+        var results = new List<Nexus.Contracts.BrowserAgent.InstalledBrowserExtensionInfo>();
         string rootDir = GetAdGuardRootExtensionsDirectory();
 
         try
@@ -2614,7 +2614,7 @@ public partial class AgentWorkspaceView : UserControl
                             _adGuardExtensionId = id;
                             ResolveAdGuardExtensionPopupAndOptionsUrls(id, GetAdGuardUnpackedExtensionFolder());
                         }
-                        results.Add(new Nexus.App.Services.BrowserAgent.InstalledBrowserExtensionInfo(
+                        results.Add(new Nexus.Contracts.BrowserAgent.InstalledBrowserExtensionInfo(
                             Id: id,
                             Name: name,
                             Version: "MV3",
@@ -2821,7 +2821,7 @@ public partial class AgentWorkspaceView : UserControl
 
             if (rt.OpenBrowserTabs.Count == 0)
             {
-                var firstTab = new Nexus.App.Services.BrowserAgent.BrowserTabSessionItem("tab-main", cleanTitle, url, "globe", false);
+                var firstTab = new Nexus.Contracts.BrowserAgent.BrowserTabSessionItem("tab-main", cleanTitle, url, "globe", false);
                 rt.OpenBrowserTabs.Add(firstTab);
                 rt.ActiveBrowserTabId = firstTab.TabId;
             }
@@ -2842,7 +2842,7 @@ public partial class AgentWorkspaceView : UserControl
 
                 if (activeTab is null)
                 {
-                    var newWebTab = new Nexus.App.Services.BrowserAgent.BrowserTabSessionItem(
+                    var newWebTab = new Nexus.Contracts.BrowserAgent.BrowserTabSessionItem(
                         "tab-" + Guid.NewGuid().ToString("N")[..6],
                         cleanTitle,
                         url,
@@ -2885,7 +2885,7 @@ public partial class AgentWorkspaceView : UserControl
                 {
                     curUrl = "https://www.google.com";
                 }
-                rt.OpenBrowserTabs.Add(new Nexus.App.Services.BrowserAgent.BrowserTabSessionItem(
+                rt.OpenBrowserTabs.Add(new Nexus.Contracts.BrowserAgent.BrowserTabSessionItem(
                     "tab-main",
                     "Google",
                     curUrl,
@@ -2893,7 +2893,7 @@ public partial class AgentWorkspaceView : UserControl
                     false));
             }
 
-            Nexus.App.Services.BrowserAgent.BrowserTabSessionItem? existing = null;
+            Nexus.Contracts.BrowserAgent.BrowserTabSessionItem? existing = null;
             if (!string.IsNullOrEmpty(internalKind))
             {
                 existing = rt.OpenBrowserTabs.FirstOrDefault(t =>
@@ -2921,7 +2921,7 @@ public partial class AgentWorkspaceView : UserControl
             }
             else
             {
-                existing = new Nexus.App.Services.BrowserAgent.BrowserTabSessionItem(
+                existing = new Nexus.Contracts.BrowserAgent.BrowserTabSessionItem(
                     "tab-" + Guid.NewGuid().ToString("N")[..6],
                     title,
                     url,
@@ -4507,7 +4507,7 @@ public partial class AgentWorkspaceView : UserControl
                                 else if (msg.StartsWith("nexus_cmd:save_browser_settings:", StringComparison.Ordinal))
                                 {
                                     string json = msg["nexus_cmd:save_browser_settings:".Length..];
-                                    var updated = System.Text.Json.JsonSerializer.Deserialize<Nexus.App.Services.BrowserAgent.AdGuardPersistentConfig>(json);
+                                    var updated = System.Text.Json.JsonSerializer.Deserialize<Nexus.Contracts.BrowserAgent.AdGuardPersistentConfig>(json);
                                     if (updated is not null)
                                     {
                                         rt.AdGuardConfig.ShowFullUrlInAddressBar = updated.ShowFullUrlInAddressBar;

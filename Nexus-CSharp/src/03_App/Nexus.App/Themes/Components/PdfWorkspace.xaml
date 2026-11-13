@@ -6,6 +6,8 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="Background" Value="{DynamicResource NexusPdfTabStripBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeDefault}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Padding" Value="12,0"/>
             <Setter Property="Margin" Value="-8,0,-8,0"/>
             <Setter Property="Template">
@@ -28,11 +30,11 @@
                                 <Path Grid.Column="0" VerticalAlignment="Bottom" Height="8" Width="8"
                                       Fill="{Binding Background, ElementName=TabChrome}" Data="M0,8 A8,8 0 0 0 8,0 L8,8 Z"/>
                                 <Path Grid.ColumnSpan="3" HorizontalAlignment="Left" VerticalAlignment="Bottom" Height="9" Width="9"
-                                      Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" Data="M0,8.5 A8.5,7.5 0 0 0 8.5,1"/>
+                                      Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Data="M0,8.5 A8.5,7.5 0 0 0 8.5,1"/>
                                 <Path Grid.Column="2" VerticalAlignment="Bottom" Height="8" Width="8"
                                       Fill="{Binding Background, ElementName=TabChrome}" Data="M0,0 A8,8 0 0 0 8,8 L0,8 Z"/>
                                 <Path Grid.ColumnSpan="3" HorizontalAlignment="Right" VerticalAlignment="Bottom" Height="9" Width="9"
-                                      Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" Data="M0.5,1 A8.5,7.5 0 0 0 9,8.5"/>
+                                      Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Data="M0.5,1 A8.5,7.5 0 0 0 9,8.5"/>
                             </Grid>
                             <ContentPresenter Grid.Column="1" Margin="{TemplateBinding Padding}" ContentSource="Header"
                                               VerticalAlignment="Center" RecognizesAccessKey="False"/>
@@ -54,9 +56,6 @@
                                 <Setter Property="FontWeight" Value="{DynamicResource NexusTypographyStrongWeight}"/>
                                 <Setter Property="Panel.ZIndex" Value="2"/>
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="{DynamicResource NexusStrokeFocus}"/>
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Foreground" Value="{DynamicResource NexusForegroundDisabled}"/>
                                 <Setter Property="Cursor" Value="Arrow"/>
@@ -73,32 +72,36 @@
         <Setter Property="VerticalContentAlignment" Value="Stretch"/>
             <Setter Property="Template"><Setter.Value>
                 <ControlTemplate TargetType="TabControl">
-                    <Grid Background="{TemplateBinding Background}">
+                    <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Grid Background="{DynamicResource NexusPdfTabStripBackground}">
-                            <Border Height="1" VerticalAlignment="Bottom" Background="{TemplateBinding BorderBrush}"/>
-                            <Grid Margin="16,8,16,0" HorizontalAlignment="Left">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                                              CanContentScroll="False" Focusable="False">
-                                    <TabPanel IsItemsHost="True" Margin="8,0,8,0" KeyboardNavigation.TabIndex="1"/>
-                                </ScrollViewer>
-                                <Button x:Name="AddPdfWorkspaceButton" Grid.Column="1" Width="36" Height="36" Padding="0" Margin="6,0,0,0"
-                                        Style="{StaticResource NexusToolbarButtonStyle}" Command="{Binding AddTabCommand}"
-                                        ToolTip="Workspace PDF baru" AutomationProperties.Name="Tambah workspace PDF">
-                                    <TextBlock services:NexusIcon.Glyph="Add" FontSize="16"/>
-                                </Button>
+                        <Border Background="{DynamicResource NexusPdfTabStripBackground}" CornerRadius="12,0,0,0" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <Grid>
+                                <Border Height="1" VerticalAlignment="Bottom" Background="{TemplateBinding BorderBrush}"/>
+                                <Grid Margin="16,8,16,0" HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                                  CanContentScroll="False" Focusable="False">
+                                        <TabPanel IsItemsHost="True" Margin="8,0,8,0" KeyboardNavigation.TabIndex="1"/>
+                                    </ScrollViewer>
+                                    <Button x:Name="AddPdfWorkspaceButton" Grid.Column="1" Width="36" Height="36" Padding="0" Margin="6,0,0,0"
+                                            Style="{StaticResource NexusToolbarButtonStyle}" Command="{Binding AddTabCommand}"
+                                            ToolTip="Workspace PDF baru" AutomationProperties.Name="Tambah workspace PDF">
+                                        <TextBlock services:NexusIcon.Glyph="Add" FontSize="16"/>
+                                    </Button>
+                                </Grid>
                             </Grid>
-                        </Grid>
-                        <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Row="1" ContentSource="SelectedContent"
-                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                          KeyboardNavigation.TabNavigation="Local"/>
+                        </Border>
+                        <Border Grid.Row="1" Background="{TemplateBinding Background}">
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                              KeyboardNavigation.TabNavigation="Local"/>
+                        </Border>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value></Setter>

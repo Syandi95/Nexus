@@ -1,3 +1,5 @@
+using Nexus.Contracts.BrowserAgent;
+
 namespace Nexus.Foundation.Config
 {
     public class AppConfigRecord
@@ -8,6 +10,7 @@ namespace Nexus.Foundation.Config
         public string EngineRootFolder { get; set; } = @".\Engine";
         public string? ChatSystemPromptOverride { get; set; }
         public string? AiCheckSystemPromptOverride { get; set; }
+        public string? BrowserAgentSystemPromptOverride { get; set; }
         public bool ConfirmExit { get; set; } = true;
         public bool ConfirmModule { get; set; } = true;
         public string DefaultCmykProfilePath { get; set; } = string.Empty;
@@ -20,5 +23,13 @@ namespace Nexus.Foundation.Config
         public string EngineStatus { get; set; } = "Standby";
         public string EngineState { get; set; } = "READY";
         public string ActiveFolderPath { get; set; } = "Downloads";
+
+        // Browser Agent, AdGuard MV3 & Multi-Provider AI Foundation Settings
+        public string BrowserAdapterMode { get; set; } = "WebView2Native";
+        public int BrowserMaxActionsPerTask { get; set; } = 8;
+        public bool AutoClearBrowserHistoryOnNewChat { get; set; } = false;
+        public bool AdGuardProtectionEnabled { get; set; } = true;
+        public AdGuardPersistentConfig AdGuardConfig { get; set; } = new();
+        public string ActiveAiProvider { get; set; } = "LocalGguf";
     }
 }

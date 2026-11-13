@@ -1,3 +1,4 @@
+using Nexus.Conversation.Windowing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +22,7 @@ public interface IConversationManagerService
     Task UpdateSamplingAsync(int topK, double minP) => Task.CompletedTask;
     Task RenameAsync(string id, string title);
     Task RemoveActiveAsync(string id);
+    IReadOnlyList<ConversationMessage> GetOpeningMessagesWindow(int pageRows = TranscriptPageWindowEngine.PageRows) => Array.Empty<ConversationMessage>();
 }
 
 public class ConversationManagerService : IConversationManagerService
@@ -213,5 +215,12 @@ public class ConversationManagerService : IConversationManagerService
             index.Add(_index.ToIndexItem(detail));
         }
         await _index.SaveIndexAsync(index);
+    }
+
+    public IReadOnlyList<ConversationMessage> GetOpeningMessagesWindow(int pageRows = TranscriptPageWindowEngine.PageRows)
+    {
+        if (ActiveConversation?.Messages is null || ActiveConversation.Messages.Count == 0)
+            return Array.Empty<ConversationMessage>();
+        return TranscriptPageWindowEngine.SliceOpeningWindow(ActiveConversation.Messages, pageRows);
     }
 }

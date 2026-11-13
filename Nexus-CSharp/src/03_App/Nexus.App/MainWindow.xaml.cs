@@ -212,6 +212,7 @@ namespace Nexus.App
                 [typeof(HomeViewModel)] = HomeNavIndicator,
                 [typeof(ConversationViewModel)] = AiWorkspaceNavIndicator,
                 [typeof(ImageSubsystemViewModel)] = ImageToolsNavIndicator,
+                [typeof(PdfWorkspaceViewModel)] = PdfToolsNavIndicator,
                 [typeof(PdfUtilitiesViewModel)] = PdfToolsNavIndicator,
                 [typeof(FileManagementViewModel)] = FileManagementNavIndicator,
                 [typeof(SettingsViewModel)] = SettingsNavIndicator
@@ -222,6 +223,7 @@ namespace Nexus.App
                 [typeof(HomeViewModel)] = HomeNavButton,
                 [typeof(ConversationViewModel)] = AiWorkspaceNavButton,
                 [typeof(ImageSubsystemViewModel)] = ImageToolsNavButton,
+                [typeof(PdfWorkspaceViewModel)] = PdfToolsNavButton,
                 [typeof(PdfUtilitiesViewModel)] = PdfToolsNavButton,
                 [typeof(FileManagementViewModel)] = FileManagementNavButton,
                 [typeof(SettingsViewModel)] = SettingsNavButton
@@ -253,28 +255,22 @@ namespace Nexus.App
             }
 
             var activeType = currentViewModel.GetType();
-            foreach (var entry in _navIndicatorMap)
+            foreach (var indicator in _navIndicatorMap.Values.Distinct())
             {
-                if (entry.Key == activeType)
-                {
-                    entry.Value.SetResourceReference(Border.BackgroundProperty, "NexusAccentSelected");
-                }
-                else
-                {
-                    entry.Value.Background = Brushes.Transparent;
-                }
+                indicator.Background = Brushes.Transparent;
+            }
+            if (_navIndicatorMap.TryGetValue(activeType, out var activeIndicator))
+            {
+                activeIndicator.SetResourceReference(Border.BackgroundProperty, "NexusAccentSelected");
             }
 
-            foreach (var entry in _navButtonMap)
+            foreach (var btn in _navButtonMap.Values.Distinct())
             {
-                if (entry.Key == activeType)
-                {
-                    entry.Value.SetResourceReference(Button.BackgroundProperty, "NexusSurfaceSunken");
-                }
-                else
-                {
-                    entry.Value.Background = Brushes.Transparent;
-                }
+                btn.Background = Brushes.Transparent;
+            }
+            if (_navButtonMap.TryGetValue(activeType, out var activeButton))
+            {
+                activeButton.SetResourceReference(Button.BackgroundProperty, "NexusSurfaceSunken");
             }
         }
 

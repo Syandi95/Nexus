@@ -15,6 +15,7 @@
 
         <TabControl x:Name="WorkspaceTabSelector"
                     Grid.Row="0"
+                    Panel.ZIndex="1"
                     Style="{StaticResource NexusWorkspaceTabControlStyle}"
                     ItemContainerStyle="{StaticResource NexusWorkspaceTabItemStyle}"
                     SelectedValuePath="Tag"

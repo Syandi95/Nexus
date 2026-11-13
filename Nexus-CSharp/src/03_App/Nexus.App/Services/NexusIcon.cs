@@ -188,6 +188,8 @@ namespace Nexus.App.Services
                     textBlock.Text = glyph;
                     textBlock.FontFamily = Font;
                     textBlock.FontWeight = FontWeights.Normal;
+                    textBlock.UseLayoutRounding = true;
+                    textBlock.SnapsToDevicePixels = true;
                     TextOptions.SetTextFormattingMode(textBlock, TextFormattingMode.Ideal);
                     TextOptions.SetTextRenderingMode(textBlock, TextRenderingMode.Grayscale);
                 }

@@ -46,48 +46,79 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
-    <!-- Connected Desktop Tabs: selector only; selected content is owned by the shell Content Host. -->
+    <!-- Connected Desktop Tabs: Curved Shoulder Style unified with PDF Tools -->
     <Style x:Key="NexusWorkspaceTabItemStyle" TargetType="{x:Type TabItem}">
         <Setter Property="Height" Value="{DynamicResource NexusHeightNavigation}"/>
-        <Setter Property="Padding" Value="18,0"/>
-        <Setter Property="Margin" Value="0,0,2,0"/>
-        <Setter Property="Background" Value="{DynamicResource NexusSurfaceSunken}"/>
+        <Setter Property="Padding" Value="16,0"/>
+        <Setter Property="Margin" Value="-8,0,-8,0"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+        <Setter Property="Background" Value="{DynamicResource NexusPdfTabStripBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource NexusForegroundSecondary}"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeSubtle}"/>
-        <Setter Property="BorderThickness" Value="1,1,1,0"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeDefault}"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="FontFamily" Value="{DynamicResource NexusTypographyFontFamily}"/>
         <Setter Property="FontSize" Value="{DynamicResource NexusTypographyBodyCompactSize}"/>
         <Setter Property="FontWeight" Value="{DynamicResource NexusTypographyRegularWeight}"/>
         <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="HorizontalContentAlignment" Value="Center"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type TabItem}">
-                    <Grid>
+                    <Grid SnapsToDevicePixels="True">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                        </Grid.ColumnDefinitions>
                         <Border x:Name="TabChrome"
+                                Grid.Column="1"
+                                Margin="0,0,0,8"
                                 Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}"
+                                Background="Transparent"
                                 BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{DynamicResource NexusRadiusMedium}">
-                            <ContentPresenter ContentSource="Header"
-                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                              RecognizesAccessKey="False"/>
-                        </Border>
+                                BorderThickness="0"
+                                CornerRadius="{DynamicResource NexusRadiusMedium}"/>
                         <Border x:Name="SelectedBottomJoin"
-                                Height="2"
-                                Margin="1,0,1,-1"
+                                Grid.ColumnSpan="3"
+                                Height="3"
+                                Margin="2,0,2,-1"
                                 VerticalAlignment="Bottom"
                                 Background="{DynamicResource NexusSurfaceBase}"
                                 Visibility="Collapsed"/>
+                        <Grid x:Name="LowerShoulders"
+                              Grid.ColumnSpan="3"
+                              Height="9"
+                              VerticalAlignment="Bottom"
+                              Visibility="Collapsed"
+                              IsHitTestVisible="False">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="1" Height="8" VerticalAlignment="Bottom" Background="{Binding Background, ElementName=TabChrome}"/>
+                            <Path Grid.Column="0" VerticalAlignment="Bottom" Height="8" Width="8"
+                                  Fill="{Binding Background, ElementName=TabChrome}" Data="M0,8 A8,8 0 0 0 8,0 L8,8 Z"/>
+                            <Path Grid.ColumnSpan="3" HorizontalAlignment="Left" VerticalAlignment="Bottom" Height="9" Width="9"
+                                  Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Data="M0,8.5 A8.5,7.5 0 0 0 8.5,1"/>
+                            <Path Grid.Column="2" VerticalAlignment="Bottom" Height="8" Width="8"
+                                  Fill="{Binding Background, ElementName=TabChrome}" Data="M0,0 A8,8 0 0 0 8,8 L0,8 Z"/>
+                            <Path Grid.ColumnSpan="3" HorizontalAlignment="Right" VerticalAlignment="Bottom" Height="9" Width="9"
+                                  Stroke="{Binding BorderBrush, ElementName=TabChrome}" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Data="M0.5,1 A8.5,7.5 0 0 0 9,8.5"/>
+                        </Grid>
+                        <ContentPresenter Grid.Column="1"
+                                          Margin="{TemplateBinding Padding}"
+                                          ContentSource="Header"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="False"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="TabChrome" Property="Background" Value="{DynamicResource NexusSurfaceRaised}"/>
                             <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/>
+                            <Setter Property="Panel.ZIndex" Value="1"/>
                         </Trigger>
                         <Trigger Property="IsMouseCaptured" Value="True">
                             <Setter TargetName="TabChrome" Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
@@ -96,14 +127,13 @@
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="TabChrome" Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
                             <Setter TargetName="TabChrome" Property="BorderBrush" Value="{DynamicResource NexusStrokeDefault}"/>
+                            <Setter TargetName="TabChrome" Property="BorderThickness" Value="1,1,1,0"/>
                             <Setter TargetName="TabChrome" Property="CornerRadius" Value="8,8,0,0"/>
+                            <Setter TargetName="LowerShoulders" Property="Visibility" Value="Visible"/>
                             <Setter TargetName="SelectedBottomJoin" Property="Visibility" Value="Visible"/>
                             <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/>
                             <Setter Property="FontWeight" Value="{DynamicResource NexusTypographyStrongWeight}"/>
                             <Setter Property="Panel.ZIndex" Value="2"/>
-                        </Trigger>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="TabChrome" Property="BorderBrush" Value="{DynamicResource NexusStrokeFocus}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource NexusForegroundDisabled}"/>
@@ -117,20 +147,26 @@
     </Style>
 
     <Style x:Key="NexusWorkspaceTabControlStyle" TargetType="{x:Type TabControl}">
-        <Setter Property="Background" Value="{DynamicResource NexusSurfaceSunken}"/>
+        <Setter Property="Background" Value="{DynamicResource NexusPdfTabStripBackground}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeSubtle}"/>
-        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Panel.ZIndex" Value="1"/>
         <Setter Property="ItemContainerStyle" Value="{StaticResource NexusWorkspaceTabItemStyle}"/>
         <Setter Property="KeyboardNavigation.TabNavigation" Value="Local"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type TabControl}">
                     <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}">
-                        <TabPanel IsItemsHost="True"
-                                  HorizontalAlignment="Left"
-                                  KeyboardNavigation.TabNavigation="Local"/>
+                            CornerRadius="12,0,0,0"
+                            SnapsToDevicePixels="True"
+                            UseLayoutRounding="True">
+                        <Grid>
+                            <Border Height="1" VerticalAlignment="Bottom" Background="{TemplateBinding BorderBrush}"/>
+                            <TabPanel IsItemsHost="True"
+                                      Margin="24,8,24,0"
+                                      HorizontalAlignment="Left"
+                                      KeyboardNavigation.TabNavigation="Local"/>
+                        </Grid>
                     </Border>
                 </ControlTemplate>
             </Setter.Value>

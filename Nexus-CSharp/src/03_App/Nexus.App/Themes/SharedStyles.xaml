@@ -241,6 +241,10 @@
                                           Data="M 3.5,7 L 6,4.5 L 8.5,7"
                                           Stroke="{DynamicResource NexusForegroundPrimary}"
                                           StrokeThickness="1.2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          UseLayoutRounding="True"
                                           SnapsToDevicePixels="True"/>
                                 </RepeatButton>
                                 <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsEnabled}">
@@ -261,6 +265,10 @@
                                           Data="M 3.5,5 L 6,7.5 L 8.5,5"
                                           Stroke="{DynamicResource NexusForegroundPrimary}"
                                           StrokeThickness="1.2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          UseLayoutRounding="True"
                                           SnapsToDevicePixels="True"/>
                                 </RepeatButton>
                             </Grid>
@@ -288,6 +296,10 @@
                                           Data="M 7,3.5 L 4.5,6 L 7,8.5"
                                           Stroke="{DynamicResource NexusForegroundPrimary}"
                                           StrokeThickness="1.2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          UseLayoutRounding="True"
                                           SnapsToDevicePixels="True"/>
                                 </RepeatButton>
                                 <Track x:Name="PART_Track" Grid.Column="1" IsDirectionReversed="false" IsEnabled="{TemplateBinding IsEnabled}">
@@ -308,6 +320,10 @@
                                           Data="M 5,3.5 L 7.5,6 L 5,8.5"
                                           Stroke="{DynamicResource NexusForegroundPrimary}"
                                           StrokeThickness="1.2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          UseLayoutRounding="True"
                                           SnapsToDevicePixels="True"/>
                                 </RepeatButton>
                             </Grid>
@@ -316,6 +332,88 @@
                 </Setter>
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- Modern Fluent GridViewColumnHeader Style (eliminates legacy gripper SplitCursor %TEMP%\WPF crash) -->
+    <Style TargetType="{x:Type GridViewColumnHeader}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource NexusForegroundSecondary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeSubtle}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type GridViewColumnHeader}">
+                    <Border x:Name="HeaderBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True"
+                            UseLayoutRounding="True">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True"
+                                          SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Role" Value="Padding">
+                            <Setter TargetName="HeaderBorder" Property="BorderThickness" Value="0,0,0,1"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="Floating">
+                            <Setter Property="Opacity" Value="0.7"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Modern Fluent ListViewItem Style (eliminates legacy Windows Aero blue border/hover on list rows) -->
+    <Style TargetType="{x:Type ListViewItem}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2,4"/>
+        <Setter Property="Margin" Value="0,1"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ListViewItem}">
+                    <Border x:Name="ItemBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True"
+                            UseLayoutRounding="True">
+                        <GridViewRowPresenter VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource NexusSurfaceSecondary}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource NexusSurfaceSecondary}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ============================================================ -->

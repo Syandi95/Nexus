@@ -1,3 +1,4 @@
+global using Nexus.Contracts.BrowserAgent;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -2141,5 +2142,200 @@ public sealed class BrowserUseDynamicLoopTests
         int highSignalIdx = domScript.IndexOf("highSignalLinks", StringComparison.Ordinal);
         int priorityLinksIdx = domScript.IndexOf("var priorityLinks =", StringComparison.Ordinal);
         Assert.True(highSignalIdx > 0 && priorityLinksIdx > highSignalIdx);
+    }
+    [Fact]
+    public void BatchUI1_Test1_PdfToolsNavIndicator_CurvedWorkspaceTabs_And_DialogToastPolish_VerifyCleanly()
+    {
+        var dir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? appDir = null;
+        while (dir is not null)
+        {
+            string candidate = System.IO.Path.Combine(dir.FullName, "src", "03_App", "Nexus.App");
+            if (System.IO.Directory.Exists(candidate))
+            {
+                appDir = candidate;
+                break;
+            }
+            string candidateDirect = System.IO.Path.Combine(dir.FullName, "03_App", "Nexus.App");
+            if (System.IO.Directory.Exists(candidateDirect))
+            {
+                appDir = candidateDirect;
+                break;
+            }
+            dir = dir.Parent;
+        }
+        Assert.NotNull(appDir);
+
+        // 1. Point 1: MainWindow.xaml.cs maps PdfWorkspaceViewModel to PdfToolsNavIndicator & PdfToolsNavButton
+        string mwCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "MainWindow.xaml.cs"));
+        Assert.Contains("[typeof(PdfWorkspaceViewModel)] = PdfToolsNavIndicator", mwCs);
+        Assert.Contains("[typeof(PdfWorkspaceViewModel)] = PdfToolsNavButton", mwCs);
+        Assert.Contains(".Distinct()", mwCs);
+
+        // 2. Point 2: PdfWorkspace.xaml wraps top tab bar in CornerRadius="12,0,0,0" with NexusPdfTabStripBackground
+        string pdfWsXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Themes", "Components", "PdfWorkspace.xaml"));
+        Assert.Contains("CornerRadius=\"12,0,0,0\"", pdfWsXaml);
+        Assert.Contains("StrokeStartLineCap=\"Round\" StrokeEndLineCap=\"Round\"", pdfWsXaml);
+
+        // 3. Point 3: Layout.xaml unifies NexusWorkspaceTabControlStyle & NexusWorkspaceTabItemStyle with curved shoulders and preserves WorkspaceTabStyleTests contracts
+        string layoutXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Themes", "Components", "Layout.xaml"));
+        Assert.Contains("x:Name=\"LowerShoulders\"", layoutXaml);
+        Assert.Contains("x:Name=\"TabChrome\"", layoutXaml);
+        Assert.Contains("x:Name=\"SelectedBottomJoin\"", layoutXaml);
+        Assert.Contains("CornerRadius=\"12,0,0,0\"", layoutXaml);
+        Assert.DoesNotContain("#", layoutXaml);
+        Assert.DoesNotContain("NexusStrokeFocus", layoutXaml);
+        Assert.Contains("Panel.ZIndex", layoutXaml);
+        string fileMgmtXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Views", "FileManagementView.xaml"));
+        Assert.Contains("Panel.ZIndex=\"1\"", fileMgmtXaml);
+        string sharedXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Themes", "SharedStyles.xaml"));
+        Assert.Contains("TargetType=\"{x:Type GridViewColumnHeader}\"", sharedXaml);
+        Assert.DoesNotContain("PART_HeaderGripper", sharedXaml);
+        Assert.DoesNotContain("Stretch=\"Uniform\"", sharedXaml);
+        string settingsXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Views", "SettingsView.xaml"));
+        Assert.Contains("Margin=\"28,24,28,56\"", settingsXaml);
+
+        // 4. Point 4: NexusIcon.cs sets UseLayoutRounding & SnapsToDevicePixels; InfoBar.xaml uses NexusIcon.Glyph; MainWindow.xaml polishes SnackbarCard & DialogCard
+        string nexusIconCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Services", "NexusIcon.cs"));
+        Assert.Contains("textBlock.UseLayoutRounding = true;", nexusIconCs);
+        Assert.Contains("textBlock.SnapsToDevicePixels = true;", nexusIconCs);
+
+        string infoBarXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "Controls", "InfoBar", "InfoBar.xaml"));
+        Assert.Contains("services:NexusIcon.Glyph=\"Info\"", infoBarXaml);
+        Assert.Contains("Property=\"services:NexusIcon.Glyph\" Value=\"Check\"", infoBarXaml);
+        Assert.Contains("Property=\"services:NexusIcon.Glyph\" Value=\"Warning\"", infoBarXaml);
+        Assert.Contains("Property=\"services:NexusIcon.Glyph\" Value=\"Error\"", infoBarXaml);
+
+        string mwXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir!, "MainWindow.xaml"));
+        Assert.Contains("MinHeight=\"184\" MaxHeight=\"756\"", mwXaml);
+        Assert.Contains("Width=\"364\"", mwXaml);
+
+        // 5. Point 5: Verify Chat AI Workspace views (ConversationView.xaml & DshSidebarView.xaml) are untouched and obsolete stub is removed
+        Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appDir!, "Views", "ConversationView.xaml")));
+        Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appDir!, "Views", "DshSidebarView.xaml")));
+        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(appDir!, "Services", "BrowserAgent", "BrowserUseDomEngine.cs")));
+    }
+}
+
+
+public static class NexusDirectTestRunner
+{
+    public static async Task<int> Main(string[] args)
+    {
+        System.IO.Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+        string? filter = args.FirstOrDefault();
+        var suiteTypes = new Type[]
+        {
+            typeof(BrowserUseDynamicLoopTests),
+            typeof(BrowserAgentStage3To5IntegrationTests),
+            typeof(BrowserAgentStage6EndToEndTests)
+        };
+
+        int totalTests = 0;
+        int passedTests = 0;
+        int failedTests = 0;
+        var failures = new List<(string Name, Exception Ex)>();
+        var swTotal = System.Diagnostics.Stopwatch.StartNew();
+
+        Console.WriteLine("================================================================================");
+        Console.WriteLine("NEXUS IN-PROCESS REGRESSION TEST RUNNER (4-LAYER ARCHITECTURE VERIFICATION)");
+        Console.WriteLine("================================================================================");
+
+        foreach (var suiteType in suiteTypes)
+        {
+            var methods = suiteType
+                .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(m => m.GetCustomAttributes(typeof(FactAttribute), true).Length > 0 ||
+                            m.GetCustomAttributes(typeof(TheoryAttribute), true).Length > 0)
+                .ToList();
+
+            foreach (var method in methods)
+            {
+                string baseName = $"{suiteType.Name}.{method.Name}";
+                if (!string.IsNullOrWhiteSpace(filter) &&
+                    !baseName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var inlineAttrs = method.GetCustomAttributes(typeof(InlineDataAttribute), true)
+                    .Cast<InlineDataAttribute>()
+                    .ToList();
+
+                if (inlineAttrs.Count > 0)
+                {
+                    int rowIdx = 0;
+                    foreach (var attr in inlineAttrs)
+                    {
+                        rowIdx++;
+                        totalTests++;
+                        var rowData = attr.GetData(method).FirstOrDefault() ?? Array.Empty<object?>();
+                        string rowLabel = $"{baseName}[Row {rowIdx}]";
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        try
+                        {
+                            object instance = Activator.CreateInstance(suiteType)!;
+                            object? res = method.Invoke(instance, rowData);
+                            if (res is Task t) await t;
+                            if (instance is IDisposable disp) disp.Dispose();
+                            sw.Stop();
+                            passedTests++;
+                            Console.WriteLine($"[PASS #{totalTests:D2}] {rowLabel} ({sw.ElapsedMilliseconds} ms)");
+                        }
+                        catch (Exception ex)
+                        {
+                            sw.Stop();
+                            failedTests++;
+                            var rootEx = ex is System.Reflection.TargetInvocationException tie && tie.InnerException is not null
+                                ? tie.InnerException
+                                : ex;
+                            failures.Add((rowLabel, rootEx));
+                            Console.WriteLine($"[FAIL #{totalTests:D2}] {rowLabel} ({sw.ElapsedMilliseconds} ms) -> {rootEx.GetType().Name}: {rootEx.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    totalTests++;
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        object instance = Activator.CreateInstance(suiteType)!;
+                        object? res = method.Invoke(instance, null);
+                        if (res is Task t) await t;
+                        if (instance is IDisposable disp) disp.Dispose();
+                        sw.Stop();
+                        passedTests++;
+                        Console.WriteLine($"[PASS #{totalTests:D2}] {baseName} ({sw.ElapsedMilliseconds} ms)");
+                    }
+                    catch (Exception ex)
+                    {
+                        sw.Stop();
+                        failedTests++;
+                        var rootEx = ex is System.Reflection.TargetInvocationException tie && tie.InnerException is not null
+                            ? tie.InnerException
+                            : ex;
+                        failures.Add((baseName, rootEx));
+                        Console.WriteLine($"[FAIL #{totalTests:D2}] {baseName} ({sw.ElapsedMilliseconds} ms) -> {rootEx.GetType().Name}: {rootEx.Message}");
+                    }
+                }
+            }
+        }
+
+        swTotal.Stop();
+        Console.WriteLine("================================================================================");
+        Console.WriteLine($"Total tests: {totalTests} | Passed: {passedTests} | Failed: {failedTests} | Time: {swTotal.Elapsed.TotalSeconds:F2}s");
+        Console.WriteLine("================================================================================");
+
+        if (failures.Count > 0)
+        {
+            foreach (var (name, ex) in failures)
+            {
+                Console.WriteLine($"--- {name} ---");
+                Console.WriteLine(ex.ToString());
+            }
+            return 1;
+        }
+        return 0;
     }
 }

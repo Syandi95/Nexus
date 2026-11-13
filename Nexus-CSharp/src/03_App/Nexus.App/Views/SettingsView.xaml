@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="Nexus.App.Views.SettingsView"
+<UserControl x:Class="Nexus.App.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -8,10 +8,10 @@
              xmlns:settings="clr-namespace:Nexus.App.Controls.SettingsCard"
              mc:Ignorable="d" 
              d:DesignHeight="850" d:DesignWidth="980">
-    <Grid Margin="28,24,28,32">
+    <Grid>
         <ScrollViewer Style="{StaticResource NexusScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <!-- Perfectly Centered Minimalist Edge Container (MaxWidth 920px) -->
-            <StackPanel MaxWidth="920" HorizontalAlignment="Center" Width="920" Margin="0,0,0,24">
+            <!-- Perfectly Centered Minimalist Edge Container (MaxWidth 920px) with page inset inside ScrollViewer so ScrollBar sits flush at right edge -->
+            <StackPanel MaxWidth="920" HorizontalAlignment="Center" Width="920" Margin="28,24,28,56">
 
                 <!-- Page Header (Clean & Modern) -->
                 <StackPanel Margin="0,0,0,24">

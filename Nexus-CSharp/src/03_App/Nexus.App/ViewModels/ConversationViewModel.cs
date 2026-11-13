@@ -2885,7 +2885,7 @@ namespace Nexus.App.ViewModels
 
         private System.Threading.CancellationTokenSource? _browserAgentCts;
         private bool _isInsideBrowserAgentDispatch;
-        private static readonly List<Nexus.App.Services.BrowserAgent.SearchResultCandidate> _lastSessionCandidates = new();
+        private static readonly List<Nexus.Contracts.BrowserAgent.SearchResultCandidate> _lastSessionCandidates = new();
         private static readonly System.Net.Http.HttpClient _stepPlannerHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
         public bool IsSettingsTabAccountOnly => _selectedSettingsModalTab == 3;
@@ -3900,10 +3900,10 @@ namespace Nexus.App.ViewModels
                 return new Nexus.App.Services.BrowserAgent.AgentLoopExecutionSummary(
                     false,
                     assistantMessage.Content ?? string.Empty,
-                    Array.Empty<Nexus.App.Services.BrowserAgent.SearchResultCandidate>(),
+                    Array.Empty<Nexus.Contracts.BrowserAgent.SearchResultCandidate>(),
                     null,
                     null,
-                    new Nexus.App.Services.BrowserAgent.BrowserAgentBenchmarkRecord(
+                    new Nexus.Contracts.BrowserAgent.BrowserAgentBenchmarkRecord(
                         userTask, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, "error", DateTimeOffset.UtcNow));
             }
             finally

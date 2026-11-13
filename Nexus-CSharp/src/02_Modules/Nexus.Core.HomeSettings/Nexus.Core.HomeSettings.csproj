@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\01_Foundation\Nexus.Foundation\Nexus.Foundation.csproj" />
     <ProjectReference Include="..\..\00_Contracts\Nexus.Contracts\Nexus.Contracts.csproj" />
+    <ProjectReference Include="..\Nexus.Conversation\Nexus.Conversation.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

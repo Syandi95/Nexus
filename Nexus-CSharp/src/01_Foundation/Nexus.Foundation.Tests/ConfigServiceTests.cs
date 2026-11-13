@@ -254,5 +254,40 @@ namespace Nexus.Foundation.Tests
                 }
             }
         }
+    
+        [Fact]
+        public void PromptRegistry_SupportsBrowserAgentModule_And_AppConfigPersistsAdGuardAndBrowserSettings()
+        {
+            var tempFile = Path.Combine(Path.GetTempPath(), $"nexus_test_b1c_stage1_{Guid.NewGuid():N}.json");
+            try
+            {
+                var cfgSvc = new ConfigService(tempFile);
+                var promptReg = new PromptRegistry(cfgSvc);
+
+                string defaultBrowserPrompt = promptReg.GetPrompt(PromptModule.BrowserAgent);
+                Assert.Contains("autonomous browser-use AI agent", defaultBrowserPrompt, StringComparison.Ordinal);
+
+                promptReg.SetPrompt(PromptModule.BrowserAgent, "Custom Browser Prompt");
+                Assert.Equal("Custom Browser Prompt", promptReg.GetPrompt(PromptModule.BrowserAgent));
+
+                promptReg.RestoreDefault(PromptModule.BrowserAgent);
+                Assert.Equal(PromptRegistry.DefaultBrowserAgentPrompt, promptReg.GetPrompt(PromptModule.BrowserAgent));
+
+                var cfg = cfgSvc.GetConfig();
+                cfg.BrowserMaxActionsPerTask = 12;
+                cfg.AutoClearBrowserHistoryOnNewChat = true;
+                cfg.AdGuardConfig.TotalBlockedAdsCount = 42;
+                cfgSvc.SaveConfig(cfg);
+
+                var reloaded = new ConfigService(tempFile).GetConfig();
+                Assert.Equal(12, reloaded.BrowserMaxActionsPerTask);
+                Assert.True(reloaded.AutoClearBrowserHistoryOnNewChat);
+                Assert.Equal(42, reloaded.AdGuardConfig.TotalBlockedAdsCount);
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) File.Delete(tempFile);
+            }
+        }
     }
 }

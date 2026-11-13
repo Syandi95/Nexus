@@ -424,7 +424,7 @@
                     <Viewbox Width="20" Height="20">
                         <Grid Width="20" Height="20">
                             <Rectangle Margin="1" RadiusX="3" RadiusY="3" Stroke="{DynamicResource NexusAccentPrimary}" StrokeThickness="1.5"/>
-                            <Path Data="M 12,2 L 12,18" Stroke="{DynamicResource NexusAccentPrimary}" StrokeThickness="1.5"/>
+                            <Path Data="M 12,2 L 12,18" Stroke="{DynamicResource NexusAccentPrimary}" StrokeThickness="1.5" Stretch="Uniform" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
                         </Grid>
                     </Viewbox>
                 </Button>

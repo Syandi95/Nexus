@@ -90,6 +90,48 @@ public class StorageServiceTests : IDisposable
         Assert.True(File.Exists(path));
     }
 
+
+    [Fact]
+    public async Task LruCache_CachesUpTo24Conversations_And_EvictsOldestWhenExceeded()
+    {
+        for (int i = 1; i <= 26; i++)
+        {
+            var rec = _sut.CreateNew("gemma", "g1", "local");
+            rec.Id = $"conv-{i:D2}";
+            rec.Title = $"Conversation {i}";
+            await _sut.SaveAsync(rec);
+        }
+
+        Assert.Equal(ConversationStorageService.MaxCachedConversations, _sut.CachedConversationCount);
+        Assert.False(_sut.TryGetCached("conv-01", out _));
+        Assert.False(_sut.TryGetCached("conv-02", out _));
+        Assert.True(_sut.TryGetCached("conv-26", out var latest));
+        Assert.Equal("Conversation 26", latest!.Title);
+    }
+
+    [Fact]
+    public async Task TranscriptPageWindowEngine_Slices20MostRecentMessagesInLayer2()
+    {
+        var indexSvc = new Nexus.Conversation.Index.ConversationIndexService(_sut);
+        var mgr = new Nexus.Conversation.Manager.ConversationManagerService(_sut, indexSvc);
+        await mgr.NewConversationAsync("gemma", "g1", "local");
+
+        for (int i = 1; i <= 35; i++)
+        {
+            await mgr.AddMessageAsync(i % 2 == 1 ? "user" : "assistant", $"Message #{i}");
+        }
+
+        var window = mgr.GetOpeningMessagesWindow();
+        Assert.Equal(20, window.Count);
+        Assert.Equal("Message #16", window[0].Content);
+        Assert.Equal("Message #35", window[19].Content);
+
+        // Verify BrowserUseDomEngine & BrowserSafetyGuard reside in Layer 2 (Nexus.Core.HomeSettings)
+        Assert.Equal("Nexus.Core.HomeSettings", typeof(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine).Assembly.GetName().Name);
+        Assert.Equal("Nexus.Core.HomeSettings", typeof(Nexus.App.Services.BrowserAgent.BrowserSafetyGuard).Assembly.GetName().Name);
+        Assert.Equal("Nexus.Core.HomeSettings", typeof(Nexus.App.Services.BrowserAgent.AgentTaskChecklistContract).Assembly.GetName().Name);
+    }
+
     private sealed class FailingRecycleStorageService : ConversationStorageService
     {
         protected override void SendToRecycleBin(string path)

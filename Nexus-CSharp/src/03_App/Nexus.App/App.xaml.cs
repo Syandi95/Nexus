@@ -1,7 +1,10 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Nexus.Contracts;
 using Nexus.AI.EditingLite.Services;
@@ -42,14 +45,75 @@ public partial class App : Application
 
     internal IServiceProvider Services => _serviceProvider;
 
+    static App()
+    {
+        EnsureWpfGridViewCursorsSafe();
+    }
+
     public App()
     {
+        EnsureWpfGridViewCursorsSafe();
         var services = new ServiceCollection();
         ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider();
         _crashLogger = _serviceProvider.GetRequiredService<ILoggerService>();
 
         this.DispatcherUnhandledException += App_DispatcherUnhandledException;
+    }
+
+    internal static void EnsureWpfGridViewCursorsSafe()
+    {
+        try
+        {
+            var wpfTempDir = Path.Combine(Path.GetTempPath(), "WPF");
+            bool tempWritable = false;
+            try
+            {
+                Directory.CreateDirectory(wpfTempDir);
+                var probeFile = Path.Combine(wpfTempDir, "nexus_probe_" + Guid.NewGuid().ToString("N") + ".tmp");
+                using (var fs = new FileStream(probeFile, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                {
+                    fs.WriteByte(0);
+                }
+                File.Delete(probeFile);
+                tempWritable = true;
+            }
+            catch
+            {
+                tempWritable = false;
+            }
+
+            if (!tempWritable)
+            {
+                var fallbackTemp = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Temp");
+                var fallbackWpfTemp = Path.Combine(fallbackTemp, "WPF");
+                Directory.CreateDirectory(fallbackWpfTemp);
+                Environment.SetEnvironmentVariable("TMP", fallbackTemp, EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("TEMP", fallbackTemp, EnvironmentVariableTarget.Process);
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var headerType = typeof(GridViewColumnHeader);
+            foreach (var field in headerType.GetFields(BindingFlags.Static | BindingFlags.NonPublic))
+            {
+                if (field.FieldType == typeof(Cursor) && field.GetValue(null) == null)
+                {
+                    var fallbackCursor = field.Name.Contains(" split", StringComparison.OrdinalIgnoreCase) ||
+                                         field.Name.Contains("split", StringComparison.OrdinalIgnoreCase)
+                        ? Cursors.SizeWE
+                        : Cursors.Hand;
+                    field.SetValue(null, fallbackCursor);
+                }
+            }
+        }
+        catch
+        {
+        }
     }
 
     private void ConfigureServices(IServiceCollection services)
@@ -255,6 +319,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        EnsureWpfGridViewCursorsSafe();
         base.OnStartup(e);
         RegisterTypographyCompatibilityResources();
 
