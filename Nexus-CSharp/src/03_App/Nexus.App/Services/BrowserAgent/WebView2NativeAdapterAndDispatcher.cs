@@ -515,6 +515,13 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                     node?.TagName ?? elem.TagName,
                     node?.Role ?? elem.Role);
 
+                bool canDirectNavigateLinkInLiveWebView2 = _scriptExecutor is null &&
+                    _workspaceVm is not null &&
+                    !string.IsNullOrWhiteSpace(resolvedHref) &&
+                    resolvedHref.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(resolvedHref.TrimEnd('/'), urlBefore.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
+                    !resolvedHref.EndsWith("#", StringComparison.Ordinal);
+
                 string jsRes = await effectiveJs(jsCode);
                 if (!string.IsNullOrWhiteSpace(jsRes))
                 {
@@ -526,9 +533,15 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                             string err = doc.RootElement.TryGetProperty("error", out var ep)
                                 ? ep.GetString() ?? "JS_ACTION_FAILED"
                                 : "JS_ACTION_FAILED";
-                            return new BrowserActionOutcome(
-                                false, "browser.click", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
-                                $"Gagal mengeksekusi 'click' pada [{elem.RefId}]: {err}", err);
+                            // In live WebView2, if an <a href="https://..."> card link has a safety-verified resolvedHref
+                            // and synthetic JS click was blocked by a page overlay/CSS pseudo-layer, navigate directly under the same barrier lease!
+                            if (!canDirectNavigateLinkInLiveWebView2 ||
+                                (err != "ELEMENT_COVERED_BY_OVERLAY" && err != "ELEMENT_NOT_VISIBLE"))
+                            {
+                                return new BrowserActionOutcome(
+                                    false, "browser.click", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                                    $"Gagal mengeksekusi 'click' pada [{elem.RefId}]: {err}", err);
+                            }
                         }
                         if (doc.RootElement.TryGetProperty("href", out var hrefProp) &&
                             hrefProp.ValueKind == JsonValueKind.String &&
@@ -544,10 +557,65 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
 
                 if (!string.IsNullOrWhiteSpace(resolvedHref) && resolvedHref.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
-                    _currentUrl = resolvedHref;
-                    BrowserAgentRuntimeSettings.Current.CurrentUrl = _currentUrl;
-                    if (_workspaceVm is not null)
+                    bool isDifferentPageTarget = !string.Equals(resolvedHref.TrimEnd('/'), urlBefore.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
+                                                 !resolvedHref.EndsWith("#", StringComparison.Ordinal);
+                    if (_scriptExecutor is null && _workspaceVm is not null && isDifferentPageTarget)
+                    {
+                        await Task.Delay(450, ct);
+                        string liveHrefAfterClick = urlBefore;
+                        try
+                        {
+                            string probed = (await effectiveJs("(function(){ return location.href || ''; })()")).Trim().Trim('"');
+                            if (!string.IsNullOrWhiteSpace(probed) && probed.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                            {
+                                liveHrefAfterClick = probed;
+                            }
+                        }
+                        catch { }
+
+                        bool stillAtOldUrl = string.Equals(liveHrefAfterClick.TrimEnd('/'), urlBefore.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+                        if (stillAtOldUrl)
+                        {
+                            var clickNavOutcome = await NavigateCoreUnderLeaseAsync(resolvedHref, ct);
+                            string snapAfterClickNav = string.IsNullOrWhiteSpace(clickNavOutcome.SnapshotId) ? NextSnapshotId() : clickNavOutcome.SnapshotId;
+                            if (!clickNavOutcome.IsSuccess)
+                            {
+                                return new BrowserActionOutcome(
+                                    false, "browser.click", urlBefore, _currentUrl, _currentTitle, snapAfterClickNav,
+                                    clickNavOutcome.Message, clickNavOutcome.ErrorCode ?? "NAVIGATION_FAILED");
+                            }
+                            return new BrowserActionOutcome(
+                                true, "browser.click", urlBefore, _currentUrl, _currentTitle, snapAfterClickNav,
+                                $"Berhasil mengklik elemen [{elem.RefId}] '{elem.Name}'. Snapshot baru: {snapAfterClickNav}.");
+                        }
+
+                        // Wait for the new page's document.readyState to reach complete so cards/episodes are rendered
+                        for (int rPoll = 0; rPoll < 4; rPoll++)
+                        {
+                            try
+                            {
+                                string rs = (await effectiveJs("(function(){ return document.readyState || ''; })()")).Trim().Trim('"');
+                                if (string.Equals(rs, "complete", StringComparison.OrdinalIgnoreCase))
+                                    break;
+                            }
+                            catch { }
+                            await Task.Delay(200, ct);
+                        }
+                        _currentUrl = liveHrefAfterClick;
+                        BrowserAgentRuntimeSettings.Current.CurrentUrl = _currentUrl;
                         _workspaceVm.LastBrowserUrl = _currentUrl;
+                    }
+                    else
+                    {
+                        _currentUrl = resolvedHref;
+                        BrowserAgentRuntimeSettings.Current.CurrentUrl = _currentUrl;
+                        if (_workspaceVm is not null)
+                            _workspaceVm.LastBrowserUrl = _currentUrl;
+                    }
+                }
+                else if (_scriptExecutor is null)
+                {
+                    await Task.Delay(280, ct);
                 }
 
                 string nextSnapJs = NextSnapshotId();
@@ -725,6 +793,17 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                 }
                 else if (!string.IsNullOrWhiteSpace(liveHref) && liveHref.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
+                    for (int rPoll = 0; rPoll < 4; rPoll++)
+                    {
+                        try
+                        {
+                            string rs = (await liveEval("(function(){ return document.readyState || ''; })()")).Trim().Trim('"');
+                            if (string.Equals(rs, "complete", StringComparison.OrdinalIgnoreCase))
+                                break;
+                        }
+                        catch { }
+                        await Task.Delay(200, ct);
+                    }
                     _currentUrl = liveHref;
                     BrowserAgentRuntimeSettings.Current.CurrentUrl = _currentUrl;
                     if (_workspaceVm is not null)

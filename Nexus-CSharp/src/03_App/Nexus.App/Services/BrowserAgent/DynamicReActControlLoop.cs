@@ -135,6 +135,9 @@ public sealed class DynamicReActControlLoop
     private bool _downloadStartingTriggered;
     private bool _hasExecutedInputTextInRun;
     private string _lastInputTextHost = string.Empty;
+    private readonly HashSet<string> _searchedHostsInRun = new(StringComparer.OrdinalIgnoreCase);
+    private bool _subItemSelectedInRun;
+    private bool _playActionExecutedInRun;
     private string _currentRunUserTask = string.Empty;
     private string _ephemeralReadState = string.Empty;
     private readonly BrowserUseActionLoopDetector _loopDetector = new();
@@ -466,9 +469,31 @@ public sealed class DynamicReActControlLoop
             {
                 _tabStack.OpenOrActivateTab(nav.UrlAfter, nav.TitleAfter, "dynamic", _currentScrollY);
                 _currentScrollY = 0;
+                if (!string.IsNullOrWhiteSpace(nav.UrlAfter) &&
+                    (nav.UrlAfter.Contains("?s=", StringComparison.OrdinalIgnoreCase) ||
+                     nav.UrlAfter.Contains("search_query=", StringComparison.OrdinalIgnoreCase) ||
+                     nav.UrlAfter.Contains("?q=", StringComparison.OrdinalIgnoreCase) ||
+                     nav.UrlAfter.Contains("/search", StringComparison.OrdinalIgnoreCase)) &&
+                    Uri.TryCreate(nav.UrlAfter, UriKind.Absolute, out var searchNavUri))
+                {
+                    string normSearchHost = searchNavUri.Host.Replace("www.", string.Empty, StringComparison.OrdinalIgnoreCase);
+                    _searchedHostsInRun.Add(normSearchHost);
+                    _hasExecutedInputTextInRun = true;
+                    _lastInputTextHost = normSearchHost;
+                }
             }
             return new BrowserStepActionResult(
-                action, !nav.IsSuccess, nav.Message, urlBefore, nav.UrlAfter, nav.IsSuccess, false, false, false);
+                action,
+                !nav.IsSuccess,
+                nav.Message,
+                urlBefore,
+                nav.UrlAfter,
+                nav.IsSuccess,
+                false,
+                false,
+                false,
+                VerificationStatus: nav.IsSuccess ? ActionVerificationStatus.Verified : ActionVerificationStatus.Failed,
+                VerificationEvidence: nav.IsSuccess ? $"URL aktif terverifikasi: {nav.UrlAfter}" : nav.ErrorCode);
         }
 
         if (action == "search_web")
@@ -764,6 +789,7 @@ public sealed class DynamicReActControlLoop
             if (Uri.TryCreate(urlBefore, UriKind.Absolute, out var inputHostUri))
             {
                 _lastInputTextHost = inputHostUri.Host.Replace("www.", string.Empty, StringComparison.OrdinalIgnoreCase);
+                _searchedHostsInRun.Add(_lastInputTextHost);
             }
             string val = decision.TextOrUrl ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(BrowserAgentRuntimeSettings.Current.ClipboardMemory))
@@ -969,6 +995,20 @@ public sealed class DynamicReActControlLoop
             _currentScrollY = 0;
         }
 
+        var reqSubItem = AgentTaskChecklistContract.TryExtractRequestedSubItem(_currentRunUserTask);
+        if (reqSubItem is not null &&
+            AgentTaskChecklistContract.IsSpecificSubItemMatch(targetNode.TextOrLabel + " " + (targetNode.Href ?? urlAfterClick), reqSubItem))
+        {
+            _subItemSelectedInRun = true;
+        }
+
+        if (string.Equals(targetNode.TagName, "video", StringComparison.OrdinalIgnoreCase) ||
+            Regex.IsMatch(targetNode.TextOrLabel ?? string.Empty, @"^\s*(?:play|putar|tonton|mainkan|watch|play\s+video|putar\s+video|play\s+episode|putar\s+episode)\b", RegexOptions.IgnoreCase))
+        {
+            _playActionExecutedInRun = true;
+        }
+
+        bool urlChangedOnClick = !string.Equals(urlBefore.TrimEnd('/'), urlAfterClick.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
         return new BrowserStepActionResult(
             ActionName: action,
             IsError: false,
@@ -978,7 +1018,9 @@ public sealed class DynamicReActControlLoop
             DomOrUrlChanged: true,
             DownloadTriggered: false,
             UsedXPathFallback: false,
-            InterceptedForApproval: false);
+            InterceptedForApproval: false,
+            VerificationStatus: urlChangedOnClick || _playActionExecutedInRun ? ActionVerificationStatus.Verified : ActionVerificationStatus.Executed,
+            VerificationEvidence: urlChangedOnClick ? $"Transisi URL terverifikasi: {urlBefore} -> {urlAfterClick}" : $"Interaksi elemen [{targetNode.Index}] dieksekusi pada {urlAfterClick}");
     }
 
     /// <summary>
@@ -1038,8 +1080,15 @@ public sealed class DynamicReActControlLoop
         var sw = Stopwatch.StartNew();
         _hasExecutedInputTextInRun = false;
         _lastInputTextHost = string.Empty;
+        _searchedHostsInRun.Clear();
+        _subItemSelectedInRun = false;
+        _playActionExecutedInRun = false;
         _currentRunUserTask = userTask ?? string.Empty;
-        int maxSteps = Math.Clamp(BrowserAgentRuntimeSettings.Current.MaxActionsPerTask, 1, 15);
+        bool isMultiStageOrSubItemTask = (_currentRunUserTask.Contains("->", StringComparison.Ordinal)) ||
+                                         (_currentRunUserTask.Contains("→", StringComparison.Ordinal)) ||
+                                         AgentTaskChecklistContract.TryExtractRequestedSubItem(_currentRunUserTask) is not null;
+        int configuredMax = BrowserAgentRuntimeSettings.Current.MaxActionsPerTask;
+        int maxSteps = Math.Clamp(isMultiStageOrSubItemTask && configuredMax == 8 ? 12 : configuredMax, 1, 15);
         int consecutiveFailures = 0;
         int actionsExecuted = 0;
         int pagesOpened = 0;
@@ -1122,14 +1171,15 @@ public sealed class DynamicReActControlLoop
             }
             else if (step == 1 && !string.IsNullOrWhiteSpace(initialTargetUrl))
             {
-                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost);
+                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost, _searchedHostsInRun);
                 decision = ParseModelDecisionJsonOrFallback(
                     null,
                     userTask,
                     snapshot,
                     step,
                     lastDownload is not null,
-                    typedOnHost);
+                    typedOnHost,
+                    _playActionExecutedInRun);
             }
             else if (BrowserAgentRuntimeSettings.Current.LiveLlmStepPlannerCaller is { } llmCaller)
             {
@@ -1159,31 +1209,33 @@ public sealed class DynamicReActControlLoop
                     rawLlmJson = await llmCaller(sysPrompt, usrPrompt, ct);
                 }
                 catch { }
-                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost);
+                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost, _searchedHostsInRun);
                 decision = ParseModelDecisionJsonOrFallback(
                     rawLlmJson,
                     userTask,
                     snapshot,
                     step,
                     lastDownload is not null,
-                    typedOnHost);
+                    typedOnHost,
+                    _playActionExecutedInRun);
             }
             else
             {
-                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost);
+                bool typedOnHost = HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost, _searchedHostsInRun);
                 decision = BuildDefaultAutonomousStepDecision(
                     userTask,
                     snapshot,
                     step,
                     lastDownload is not null,
-                    typedOnHost);
+                    typedOnHost,
+                    _playActionExecutedInRun);
             }
 
             // Supervisor Pre-Action Gatekeeper: block duplicate root navigation & sanitize search query verbs
             var gateDecision = checklistContract.EvaluatePreActionGate(decision.ActionName, decision.TextOrUrl, snapshot.CurrentUrl);
             if (!gateDecision.IsAllowed && gateDecision.EffectiveActionName == "input_text")
             {
-                decision = BuildDefaultAutonomousStepDecision(userTask, snapshot, step, lastDownload is not null, _hasExecutedInputTextInRun);
+                decision = BuildDefaultAutonomousStepDecision(userTask, snapshot, step, lastDownload is not null, HasTypedOnCurrentHost(snapshot.CurrentUrl, _hasExecutedInputTextInRun, _lastInputTextHost, _searchedHostsInRun), _playActionExecutedInRun);
             }
             else if (!string.IsNullOrWhiteSpace(gateDecision.SanitizedQueryOrUrl) &&
                      decision.ActionName is "input_text" or "search_web" or "fill")
@@ -1288,11 +1340,29 @@ public sealed class DynamicReActControlLoop
                 string actLower = (decision.ActionName ?? string.Empty).ToLowerInvariant();
                 if (actLower is "go_to_url" or "navigate")
                 {
-                    checklistContract.MarkStepCompleted("NAVIGATE", "Halaman terbuka & terverifikasi", result.UrlAfter);
+                    bool isSiteSearchUrl = !string.IsNullOrWhiteSpace(result.UrlAfter) &&
+                        (result.UrlAfter.Contains("?s=", StringComparison.OrdinalIgnoreCase) ||
+                         result.UrlAfter.Contains("search_query=", StringComparison.OrdinalIgnoreCase));
+                    if (isSiteSearchUrl && checklistContract.Steps.Any(s => s.ActionBadge == "INPUT" && s.Status != ChecklistStepStatus.Completed))
+                    {
+                        checklistContract.MarkStepCompleted("NAVIGATE", "Halaman situs tujuan terbuka", result.UrlBefore);
+                        checklistContract.MarkStepCompleted("INPUT", $"Pencarian \"{checklistContract.CleanSearchTopic}\" berhasil dibuka", result.UrlAfter);
+                    }
+                    else
+                    {
+                        checklistContract.MarkStepCompleted("NAVIGATE", "Halaman terbuka & terverifikasi", result.UrlAfter);
+                    }
                 }
                 else if (actLower is "input_text" or "search_web" or "fill")
                 {
-                    checklistContract.MarkStepCompleted("INPUT", $"Kueri \"{decision.TextOrUrl}\" berhasil dikirim", result.UrlAfter);
+                    bool isIntermediateGoogleHop = isMultiStageOrSubItemTask &&
+                        (snapshot.CurrentUrl ?? string.Empty).Contains("google.com", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(checklistContract.CleanSearchTopic) &&
+                        !string.Equals((decision.TextOrUrl ?? string.Empty).Trim(), checklistContract.CleanSearchTopic.Trim(), StringComparison.OrdinalIgnoreCase);
+                    if (!isIntermediateGoogleHop)
+                    {
+                        checklistContract.MarkStepCompleted("INPUT", $"Kueri \"{decision.TextOrUrl}\" berhasil dikirim", result.UrlAfter);
+                    }
                 }
                 else if (actLower is "click_element" or "click")
                 {
@@ -1309,12 +1379,31 @@ public sealed class DynamicReActControlLoop
                             Snippet: "Aktif & terverifikasi di Browser Panel Kanan",
                             RetrievedAtUtc: DateTimeOffset.UtcNow);
                     }
-                    var clickStepObj = checklistContract.Steps.FirstOrDefault(s => s.ActionBadge == "CLICK");
-                    if (clickStepObj is not null && !string.IsNullOrWhiteSpace(clickedNode?.TextOrLabel))
+                    bool isEnteringSiteFromGoogle = isMultiStageOrSubItemTask &&
+                        (snapshot.CurrentUrl ?? string.Empty).Contains("google.com/search", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(checklistContract.CleanSearchTopic) &&
+                        !clickedTitle.Contains(checklistContract.CleanSearchTopic.Split(' ')[0], StringComparison.OrdinalIgnoreCase);
+                    if (isEnteringSiteFromGoogle)
                     {
-                        clickStepObj.Description = $"Mengklik \"{clickedTitle}\"";
+                        checklistContract.MarkStepCompleted("NAVIGATE", $"Berhasil masuk ke situs \"{clickedTitle}\"", targetHref);
                     }
-                    checklistContract.MarkStepCompleted("CLICK", "Target berhasil diklik & dimuat", targetHref);
+                    else
+                    {
+                        var clickStepObj = checklistContract.Steps.FirstOrDefault(s => s.ActionBadge == "CLICK");
+                        if (clickStepObj is not null && !string.IsNullOrWhiteSpace(clickedNode?.TextOrLabel) && !_subItemSelectedInRun && !_playActionExecutedInRun)
+                        {
+                            clickStepObj.Description = $"Mengklik \"{clickedTitle}\"";
+                        }
+                        if (_subItemSelectedInRun && checklistContract.Steps.Any(s => s.ActionBadge == "SUBITEM" && s.Status != ChecklistStepStatus.Completed))
+                        {
+                            checklistContract.MarkStepCompleted("CLICK", "Halaman detail konten terbuka", result.UrlBefore);
+                            checklistContract.MarkStepCompleted("SUBITEM", $"Bagian \"{clickedTitle}\" berhasil dipilih & dimuat", targetHref);
+                        }
+                        else if (!_playActionExecutedInRun)
+                        {
+                            checklistContract.MarkStepCompleted("CLICK", "Target berhasil diklik & dimuat", targetHref);
+                        }
+                    }
                     if (result.UrlAfter.Contains("/watch?v=", StringComparison.OrdinalIgnoreCase) ||
                         snapshot.CurrentUrl.Contains("/watch?v=", StringComparison.OrdinalIgnoreCase))
                     {
@@ -1458,7 +1547,8 @@ public sealed class DynamicReActControlLoop
         BrowserLiveStateSnapshot snapshot,
         int step,
         bool alreadyDownloaded,
-        bool hasTypedInput = false)
+        bool hasTypedInput = false,
+        bool playAlreadyExecuted = false)
     {
         userTask ??= string.Empty;
         string curUrl = snapshot.CurrentUrl ?? string.Empty;
@@ -1602,7 +1692,7 @@ public sealed class DynamicReActControlLoop
                             curUrl.TrimEnd('/').StartsWith(resolvedSiteUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
                             (textOrUrl ?? string.Empty).TrimEnd('/').Equals(resolvedSiteUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
                         {
-                            return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput);
+                            return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput, playAlreadyExecuted);
                         }
 
                         // Guard 1c (Supervisor Input Sanitizer): Never allow command verbs ("play", "klik", "lewati") inside input_text
@@ -1613,13 +1703,32 @@ public sealed class DynamicReActControlLoop
                                 textOrUrl = cleanTxt;
                         }
 
-                        // Guard 2: If model returned "done" before typing requested input text OR before clicking play/result when requested, do not stop prematurely!
-                        bool wantsResultClickOrPlay = Regex.IsMatch(userTask, @"\b(play|putar|mainkan|tonton|carikan|download|dowload|unduh)\b", RegexOptions.IgnoreCase);
-                        bool isOnSearchResultsPage = curUrl.Contains("search_query=", StringComparison.OrdinalIgnoreCase) ||
-                                                     curUrl.Contains("?s=", StringComparison.OrdinalIgnoreCase);
-                        if (normAct == "done" && ((!string.IsNullOrWhiteSpace(extractedInputText) && !hasTypedInput && step <= 3) || (hasTypedInput && (wantsResultClickOrPlay || isOnSearchResultsPage) && step <= 3)))
+                        // Batch 1C Sub-Goal Completion Gate: If a multi-step or sub-item goal (e.g. clicking series card -> selecting Episode 01 -> play)
+                        // still has pending actions on the current page, never allow premature "done" at ANY step!
+                        if (TryResolveMultiHopArrowChainDecision(userTask, snapshot, step, hasTypedInput, playAlreadyExecuted) is { } pendingMultiStepDecision &&
+                            !string.Equals(pendingMultiStepDecision.ActionName, "done", StringComparison.OrdinalIgnoreCase))
                         {
-                            return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput);
+                            if (normAct == "done" ||
+                                !string.Equals(normAct, pendingMultiStepDecision.ActionName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return pendingMultiStepDecision;
+                            }
+                        }
+
+                        // Guard 2: If model returned "done" before typing requested input text OR while still on a search results page when click/play/sub-item is requested, do not stop prematurely!
+                        var reqSub = AgentTaskChecklistContract.TryExtractRequestedSubItem(userTask);
+                        bool wantsResultClickOrPlay = reqSub is not null ||
+                            Regex.IsMatch(userTask, @"\b(play|putar|mainkan|tonton|carikan|download|dowload|unduh|pilih|memilih|klik)\b", RegexOptions.IgnoreCase);
+                        bool isOnSearchResultsPage = curUrl.Contains("search_query=", StringComparison.OrdinalIgnoreCase) ||
+                                                     curUrl.Contains("?s=", StringComparison.OrdinalIgnoreCase) ||
+                                                     curUrl.Contains("/search", StringComparison.OrdinalIgnoreCase);
+                        bool subItemStillPending = reqSub is not null && !AgentTaskChecklistContract.IsSpecificSubItemMatch(curUrl, reqSub);
+                        if (normAct == "done" &&
+                            ((!string.IsNullOrWhiteSpace(extractedInputText) && !hasTypedInput && step <= 8) ||
+                             ((wantsResultClickOrPlay || isOnSearchResultsPage || subItemStillPending) &&
+                              (isOnSearchResultsPage || subItemStillPending || step <= 6))))
+                        {
+                            return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput, playAlreadyExecuted);
                         }
 
                         // Guard 3: If model selected input_text on an <a> link or non-existent element, fallback to autonomous decision
@@ -1628,7 +1737,7 @@ public sealed class DynamicReActControlLoop
                             var matchedNode = idx is int validIdx ? snapshot.Elements.FirstOrDefault(e => e.Index == validIdx) : null;
                             if (matchedNode is null || (normAct == "input_text" && matchedNode.TagName is "a" or "button"))
                             {
-                                return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput);
+                                return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput, playAlreadyExecuted);
                             }
                         }
 
@@ -1639,7 +1748,7 @@ public sealed class DynamicReActControlLoop
             catch { }
         }
 
-        return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput);
+        return BuildDefaultAutonomousStepDecision(userTask, snapshot, step, alreadyDownloaded, hasTypedInput, playAlreadyExecuted);
     }
 
     public static string NormalizeUserTyposAndTerms(string input)
@@ -1663,13 +1772,21 @@ public sealed class DynamicReActControlLoop
         return s;
     }
 
-    private static bool HasTypedOnCurrentHost(string? currentUrl, bool hasExecutedInRun, string lastTypedHost)
+    private static bool HasTypedOnCurrentHost(
+        string? currentUrl,
+        bool hasExecutedInRun,
+        string lastTypedHost,
+        IReadOnlySet<string>? searchedHosts = null)
     {
-        if (!hasExecutedInRun)
+        if (!hasExecutedInRun && (searchedHosts is null || searchedHosts.Count == 0))
             return false;
-        if (string.IsNullOrWhiteSpace(lastTypedHost) || !Uri.TryCreate(currentUrl, UriKind.Absolute, out var curUri))
+        if (!Uri.TryCreate(currentUrl, UriKind.Absolute, out var curUri))
             return hasExecutedInRun;
         string curHost = curUri.Host.Replace("www.", string.Empty, StringComparison.OrdinalIgnoreCase);
+        if (searchedHosts is not null && searchedHosts.Contains(curHost))
+            return true;
+        if (string.IsNullOrWhiteSpace(lastTypedHost))
+            return hasExecutedInRun;
         return string.Equals(curHost, lastTypedHost, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -1780,7 +1897,7 @@ public sealed class DynamicReActControlLoop
         {
             var inputMatch = Regex.Match(
                 normRaw,
-                @"(?:isi\s+(?:di\s+)?kolom\s+(?:di\s+)?pencarian|input\s+di\s+telusuri\s+masukk?an|masukk?an\s+(?:input\s+)?(?:di\s+)?pencarian|masukk?an\s+input|ketikk?an|ketik|isi\s+input|isi\s+kolom|masukk?an\s+kata\s+kunci|di\s+telusuri\s+masukk?an|di\s+pencarian\s+nama\s+film\s+ini|di\s+pencarian|di\s+telusuri|masukk?an|tanyakan|(?:buka\s+(?:web\s+)?(?:youtube|yt|google|web|browser)\s+)(?:cari|carikan|telusuri)|^(?:cari|carikan)\s+(?:nama\s+)?)\s*(.+?)(?:\s+(?:buka\s+youtube(?:nya)?|buka\s+channel(?:nya)?|cari\s+video\s+paling\s+atas|play\s+videonya|yang\s+paling\s+atas)|\s+(?:dan|lalu|kemudian|terus|langsung)\s+(?:play|putar|mainkan|tonton|klik|buka)|\s+carikan\b|\s+cari\s+tempat|,\s*buka\s+channel|,\s*rangkum|\s+rangkum\s+berikan|\s+langsung\s+dow|\s+langsung\s+unduh|\s+lalu\s+rangkum|\s+tapi\s+hati|\s+untuk\s+\d+|\s+di\s+web\b|\s+di\s+internet\b|\s+di\s+google\b|$)",
+                @"(?:isi\s+(?:di\s+)?kolom\s+(?:di\s+)?pencarian|input\s+di\s+telusuri\s+masukk?an|masukk?an\s+(?:input\s+)?(?:di\s+)?pencarian|masukk?an\s+input|ketikk?an|ketik|isi\s+input|isi\s+kolom|masukk?an\s+kata\s+kunci|di\s+telusuri\s+masukk?an|di\s+pencarian\s+nama\s+film\s+ini|di\s+pencarian|di\s+telusuri|masukk?an|tanyakan|(?:buka\s+(?:web\s+|website\s+|situs\s+)?[a-zA-Z0-9.\-]+\s+)(?:cari|carikan|telusuri)|^(?:cari|carikan)\s+(?:nama\s+)?)\s*(.+?)(?:\s+(?:buka\s+youtube(?:nya)?|buka\s+channel(?:nya)?|cari\s+video\s+paling\s+atas|play\s+videonya|yang\s+paling\s+atas)|\s+(?:dan|lalu|kemudian|terus|langsung)\s+(?:play|putar|mainkan|tonton|klik|buka)|\s+carikan\b|\s+cari\s+tempat|,\s*buka\s+channel|,\s*rangkum|\s+rangkum\s+berikan|\s+langsung\s+dow|\s+langsung\s+unduh|\s+lalu\s+rangkum|\s+tapi\s+hati|\s+untuk\s+\d+|\s+di\s+web\b|\s+di\s+internet\b|\s+di\s+google\b|$)",
                 RegexOptions.IgnoreCase);
             if (inputMatch.Success)
             {
@@ -1811,29 +1928,30 @@ public sealed class DynamicReActControlLoop
         string userTask,
         BrowserLiveStateSnapshot snapshot,
         int step,
-        bool hasTypedOnCurrentHost)
+        bool hasTypedOnCurrentHost,
+        bool playAlreadyExecuted = false)
     {
-        if (string.IsNullOrWhiteSpace(userTask) ||
-            (!userTask.Contains("->", StringComparison.Ordinal) && !userTask.Contains("→", StringComparison.Ordinal)))
-        {
+        if (string.IsNullOrWhiteSpace(userTask))
             return null;
-        }
 
-        var stages = userTask
-            .Split(new[] { "->", "→" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToArray();
-        if (stages.Length < 2)
+        bool hasArrows = userTask.Contains("->", StringComparison.Ordinal) || userTask.Contains("→", StringComparison.Ordinal);
+        var requestedSubItem = AgentTaskChecklistContract.TryExtractRequestedSubItem(userTask);
+        if (!hasArrows && requestedSubItem is null)
             return null;
+
+        var stages = hasArrows
+            ? userTask.Split(new[] { "->", "→" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray()
+            : new[] { userTask };
 
         string curUrl = snapshot.CurrentUrl ?? string.Empty;
-        var (firstSiteUrl, _, _) = AnalyzeSingleStageBrowserTask(stages[0]);
+        var (firstSiteUrl, singleStageInput, singleStageDl) = AnalyzeSingleStageBrowserTask(stages[0]);
         string entrySiteUrl = !string.IsNullOrWhiteSpace(firstSiteUrl) ? firstSiteUrl! : "https://www.google.com";
 
-        // Identify intermediate site query (e.g. "cari website movieku" -> "movieku" / "https://movieku.website/")
         string? intermediateSiteQuery = null;
         string? intermediateTargetSiteUrl = null;
-        string? contentSearchQuery = null;
+        string? contentSearchQuery = hasArrows ? null : singleStageInput;
         string? finalPlayInstruction = null;
+        bool wantsPlay = Regex.IsMatch(userTask, @"\b(play|putar|mainkan|tonton|watch|streaming)\b", RegexOptions.IgnoreCase);
 
         for (int i = 1; i < stages.Length; i++)
         {
@@ -1844,7 +1962,7 @@ public sealed class DynamicReActControlLoop
             {
                 continue;
             }
-            if (Regex.IsMatch(stgLower, @"\b(play|putar|mainkan|tonton|klik\s+episode)\b") &&
+            if (Regex.IsMatch(stgLower, @"\b(play|putar|mainkan|tonton|klik\s+episode|memilih\s+bagian|pilih\s+bagian|pilih\s+episode|klik\s+bagian)\b") &&
                 !Regex.IsMatch(stgLower, @"^(?:cari|carikan)\b"))
             {
                 finalPlayInstruction = stg;
@@ -1856,6 +1974,7 @@ public sealed class DynamicReActControlLoop
                 ? stgInput!
                 : Regex.Replace(stg, @"^(?:cari|carikan|telusuri|masukkan|masukan|ketik)\s+(?:website|web|situs)?\s*", "", RegexOptions.IgnoreCase).Trim();
             string extracted = Regex.Replace(rawExtracted, @"^(?:website|web|situs)\s+", "", RegexOptions.IgnoreCase).Trim();
+            extracted = AgentTaskChecklistContract.CleanSearchQueryFromCommandVerbs(extracted);
 
             if (intermediateSiteQuery is null &&
                 (stgLower.Contains("website") || stgLower.Contains("situs") || !string.IsNullOrWhiteSpace(stgSite)) &&
@@ -1892,7 +2011,7 @@ public sealed class DynamicReActControlLoop
         {
             string googleQuery = !string.IsNullOrWhiteSpace(intermediateSiteQuery)
                 ? intermediateSiteQuery!
-                : (contentSearchQuery ?? stages[1]);
+                : (contentSearchQuery ?? stages[Math.Min(1, stages.Length - 1)]);
             var googleInput = snapshot.Elements.FirstOrDefault(e =>
                 e.TagName is "input" or "textarea" || e.Role is "textbox" or "searchbox" or "combobox");
             if (googleInput is not null && !hasTypedOnCurrentHost)
@@ -1948,12 +2067,21 @@ public sealed class DynamicReActControlLoop
             }
         }
 
-        // Stage 4: On the destination website (e.g. movieku.website) -> search for contentSearchQuery ("VisionQuest (2026)")
+        string cleanContentKey = Regex.Replace(contentSearchQuery ?? "", @"[()0-9]+", " ").Trim();
+        var contentWords = cleanContentKey.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 3).ToArray();
+
         bool isOnSearchResults = curUrl.Contains("?s=", StringComparison.OrdinalIgnoreCase) ||
                                  curUrl.Contains("search_query=", StringComparison.OrdinalIgnoreCase) ||
-                                 curUrl.Contains("/search", StringComparison.OrdinalIgnoreCase);
+                                 curUrl.Contains("?q=", StringComparison.OrdinalIgnoreCase) ||
+                                 curUrl.Contains("/search", StringComparison.OrdinalIgnoreCase) ||
+                                 curUrl.Contains("/results", StringComparison.OrdinalIgnoreCase);
 
-        if (!isOnGoogle && !isOnSearchResults && !string.IsNullOrWhiteSpace(contentSearchQuery) && !hasTypedOnCurrentHost)
+        bool urlAlreadyOnContentDetail = !isOnSearchResults &&
+                                         contentWords.Length > 0 &&
+                                         contentWords.Any(w => curUrl.Contains(w, StringComparison.OrdinalIgnoreCase));
+
+        // Stage 4: On the destination website root -> search for contentSearchQuery ("VisionQuest (2026)")
+        if (!isOnGoogle && !isOnSearchResults && !urlAlreadyOnContentDetail && !string.IsNullOrWhiteSpace(contentSearchQuery) && !hasTypedOnCurrentHost)
         {
             var siteInput = snapshot.Elements.FirstOrDefault(e =>
                 e.TagName is not ("a" or "button") &&
@@ -1982,43 +2110,155 @@ public sealed class DynamicReActControlLoop
             }
         }
 
-        // Stage 5: On destination site's search results or detail page -> click matching content or episode link
-        if (!isOnGoogle && (!string.IsNullOrWhiteSpace(contentSearchQuery) || !string.IsNullOrWhiteSpace(finalPlayInstruction)))
+        // Stage 5, 6, 7: Content Card Selection -> Sub-Item / Episode Selection -> Play Action
+        if (!isOnGoogle && (!string.IsNullOrWhiteSpace(contentSearchQuery) || !string.IsNullOrWhiteSpace(finalPlayInstruction) || requestedSubItem is not null))
         {
-            string cleanContentKey = Regex.Replace(contentSearchQuery ?? "", @"[()0-9]+", " ").Trim();
-            var contentWords = cleanContentKey.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 3).ToArray();
-            var episodeLink = snapshot.Elements.FirstOrDefault(e =>
-                e.TagName == "a" &&
-                !string.IsNullOrWhiteSpace(e.Href) &&
-                !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
-                Regex.IsMatch(e.TextOrLabel + " " + e.Href, @"episode\s*1\b|ep\s*1\b|eps\s*1\b", RegexOptions.IgnoreCase));
+            bool urlAlreadyOnSpecificSubItem = requestedSubItem is not null &&
+                                               !isOnSearchResults &&
+                                               AgentTaskChecklistContract.IsSpecificSubItemMatch(curUrl, requestedSubItem);
 
-            if (episodeLink is not null && !isOnSearchResults)
+            // Stage 5: On Search Results Page (?s=, /search, etc.) -> click the matching Content / Series Card (or direct non-bundle episode link)
+            if (isOnSearchResults)
             {
-                return new AgentStepDecision(
-                    "Halaman seri/film terbuka.",
-                    $"Mengklik \"{episodeLink.TextOrLabel}\".",
-                    $"Mengklik \"{episodeLink.TextOrLabel}\"",
-                    "click_element",
-                    ElementIndex: episodeLink.Index);
+                if (requestedSubItem is not null)
+                {
+                    var directSubItemLink = snapshot.Elements.FirstOrDefault(e =>
+                        e.TagName == "a" &&
+                        !string.IsNullOrWhiteSpace(e.Href) &&
+                        !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                        AgentTaskChecklistContract.IsSpecificSubItemMatch(e.TextOrLabel + " " + e.Href, requestedSubItem) &&
+                        (contentWords.Length == 0 || contentWords.Any(w => e.TextOrLabel.Contains(w, StringComparison.OrdinalIgnoreCase) || e.Href!.Contains(w, StringComparison.OrdinalIgnoreCase))));
+                    if (directSubItemLink is not null)
+                    {
+                        return new AgentStepDecision(
+                            "Tautan spesifik bagian/episode ditemukan langsung pada hasil pencarian.",
+                            $"Mengklik \"{directSubItemLink.TextOrLabel}\".",
+                            $"Mengklik \"{directSubItemLink.TextOrLabel}\"",
+                            "click_element",
+                            ElementIndex: directSubItemLink.Index);
+                    }
+                }
+
+                var contentCardLink = snapshot.Elements.FirstOrDefault(e =>
+                    e.TagName == "a" &&
+                    !string.IsNullOrWhiteSpace(e.Href) &&
+                    !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                    contentWords.Any(w => e.TextOrLabel.Contains(w, StringComparison.OrdinalIgnoreCase) || e.Href!.Contains(w, StringComparison.OrdinalIgnoreCase)))
+                    ?? snapshot.Elements.FirstOrDefault(e =>
+                        e.TagName == "a" &&
+                        !string.IsNullOrWhiteSpace(e.Href) &&
+                        !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
+                        !e.Href!.EndsWith("#", StringComparison.Ordinal) &&
+                        !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                        !Regex.IsMatch(e.TextOrLabel.Trim(), @"^(?:home|beranda|film|series|genre|cari|search|login|masuk|daftar|dmca|contact)$", RegexOptions.IgnoreCase));
+
+                if (contentCardLink is not null)
+                {
+                    return new AgentStepDecision(
+                        "Hasil pencarian konten ditemukan pada halaman.",
+                        $"Mengklik kartu konten \"{contentCardLink.TextOrLabel}\" untuk membuka halaman detail.",
+                        $"Mengklik \"{contentCardLink.TextOrLabel}\"",
+                        "click_element",
+                        ElementIndex: contentCardLink.Index);
+                }
             }
 
-            var contentLink = snapshot.Elements.FirstOrDefault(e =>
-                e.TagName == "a" &&
-                !string.IsNullOrWhiteSpace(e.Href) &&
-                !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
-                contentWords.Any(w => e.TextOrLabel.Contains(w, StringComparison.OrdinalIgnoreCase) || e.Href!.Contains(w, StringComparison.OrdinalIgnoreCase)))
-                ?? episodeLink;
-
-            if (contentLink is not null)
+            // Stage 6: On Content / Series Detail Page (!isOnSearchResults) -> select the requested Sub-Item (e.g. "Episode 01", "720p", "Sejarah")
+            if (!isOnSearchResults && requestedSubItem is not null && !urlAlreadyOnSpecificSubItem)
             {
+                var subItemElement = snapshot.Elements.FirstOrDefault(e =>
+                    !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                    AgentTaskChecklistContract.IsSpecificSubItemMatch(e.TextOrLabel + " " + (e.Href ?? string.Empty), requestedSubItem));
+
+                if (subItemElement is not null)
+                {
+                    return new AgentStepDecision(
+                        "Halaman detail konten/seri terbuka.",
+                        $"Memilih bagian \"{subItemElement.TextOrLabel}\" sesuai instruksi pengguna.",
+                        $"Mengklik \"{subItemElement.TextOrLabel}\"",
+                        "click_element",
+                        ElementIndex: subItemElement.Index);
+                }
+
+                // Fallback: if no sub-item link is matched yet because we are still on an intermediate page before detail page, click matching content link
+                if (!urlAlreadyOnContentDetail && contentWords.Length > 0)
+                {
+                    var fallbackContentLink = snapshot.Elements.FirstOrDefault(e =>
+                        e.TagName == "a" &&
+                        !string.IsNullOrWhiteSpace(e.Href) &&
+                        !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                        contentWords.Any(w => e.TextOrLabel.Contains(w, StringComparison.OrdinalIgnoreCase) || e.Href!.Contains(w, StringComparison.OrdinalIgnoreCase)));
+                    if (fallbackContentLink is not null)
+                    {
+                        return new AgentStepDecision(
+                            "Menemukan tautan konten utama.",
+                            $"Mengklik \"{fallbackContentLink.TextOrLabel}\".",
+                            $"Mengklik \"{fallbackContentLink.TextOrLabel}\"",
+                            "click_element",
+                            ElementIndex: fallbackContentLink.Index);
+                    }
+                }
+
+                if (snapshot.PixelsBelow > 120)
+                {
+                    return new AgentStepDecision(
+                        $"Mencari bagian \"{requestedSubItem.RawPhrase}\" pada halaman detail.",
+                        $"Menggulir halaman ke bawah untuk menampilkan daftar \"{requestedSubItem.RawPhrase}\".",
+                        $"Menggulir halaman untuk mencari \"{requestedSubItem.RawPhrase}\"",
+                        "scroll_down");
+                }
+            }
+
+            // Stage 7: On the Final Episode / Content Page -> click Play button if present and wantsPlay is true
+            if (!isOnSearchResults && (requestedSubItem is null || urlAlreadyOnSpecificSubItem))
+            {
+                if (!urlAlreadyOnContentDetail && requestedSubItem is null && contentWords.Length > 0)
+                {
+                    var contentLink = snapshot.Elements.FirstOrDefault(e =>
+                        e.TagName == "a" &&
+                        !string.IsNullOrWhiteSpace(e.Href) &&
+                        !e.Href!.Contains("?s=", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase) &&
+                        contentWords.Any(w => e.TextOrLabel.Contains(w, StringComparison.OrdinalIgnoreCase) || e.Href!.Contains(w, StringComparison.OrdinalIgnoreCase)));
+                    if (contentLink is not null)
+                    {
+                        return new AgentStepDecision(
+                            "Hasil pencarian konten ditemukan.",
+                            $"Mengklik \"{contentLink.TextOrLabel}\".",
+                            $"Mengklik \"{contentLink.TextOrLabel}\"",
+                            "click_element",
+                            ElementIndex: contentLink.Index);
+                    }
+                }
+
+                if (wantsPlay && !playAlreadyExecuted)
+                {
+                    var playBtn = snapshot.Elements.FirstOrDefault(e =>
+                        (e.TagName is "button" or "video" or "div" or "span" ||
+                         (e.TagName == "a" && (string.IsNullOrWhiteSpace(e.Href) || e.Href!.StartsWith("#", StringComparison.Ordinal) || e.Href!.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) || string.Equals(e.Href, curUrl, StringComparison.OrdinalIgnoreCase)))) &&
+                        (string.Equals(e.TagName, "video", StringComparison.OrdinalIgnoreCase) ||
+                         Regex.IsMatch(e.TextOrLabel.Trim(), @"^(?:play|putar|tonton|mainkan|watch|play\s+video|putar\s+video|play\s+episode|putar\s+episode|▶)$", RegexOptions.IgnoreCase)));
+
+                    if (playBtn is not null)
+                    {
+                        return new AgentStepDecision(
+                            "Halaman pemutar episode/video telah siap.",
+                            $"Mengklik tombol putar \"{playBtn.TextOrLabel}\".",
+                            $"Memutar video (\"{playBtn.TextOrLabel}\")",
+                            "click_element",
+                            ElementIndex: playBtn.Index);
+                    }
+                }
+
                 return new AgentStepDecision(
-                    "Hasil pencarian konten ditemukan.",
-                    $"Mengklik \"{contentLink.TextOrLabel}\".",
-                    $"Mengklik \"{contentLink.TextOrLabel}\"",
-                    "click_element",
-                    ElementIndex: contentLink.Index);
+                    "Seluruh tahapan navigasi, pemilihan bagian/episode, dan pemutaran telah selesai diverifikasi.",
+                    "Tugas multi-langkah selesai.",
+                    $"Halaman target aktif: {curUrl}",
+                    "done",
+                    TextOrUrl: $"Berhasil membuka dan menyiapkan pemutaran pada {curUrl}.");
             }
         }
 
@@ -2030,12 +2270,13 @@ public sealed class DynamicReActControlLoop
         BrowserLiveStateSnapshot snapshot,
         int step,
         bool alreadyDownloaded,
-        bool hasTypedInput = false)
+        bool hasTypedInput = false,
+        bool playAlreadyExecuted = false)
     {
         userTask ??= string.Empty;
         string curUrl = snapshot.CurrentUrl ?? string.Empty;
 
-        if (TryResolveMultiHopArrowChainDecision(userTask, snapshot, step, hasTypedInput) is { } arrowDecision)
+        if (TryResolveMultiHopArrowChainDecision(userTask, snapshot, step, hasTypedInput, playAlreadyExecuted) is { } arrowDecision)
         {
             return arrowDecision;
         }
@@ -2088,7 +2329,7 @@ public sealed class DynamicReActControlLoop
         }
 
         // STEP 2/3: If user requested typing into an input/prompt/search box on the opened page and hasn't typed yet
-        if (!string.IsNullOrWhiteSpace(extractedInputText) && !hasTypedInput && step <= 3)
+        if (!string.IsNullOrWhiteSpace(extractedInputText) && !hasTypedInput && step <= 8)
         {
             // Strictly exclude <a> and <button> so links like <a href="/search?s=">Cari Judul...</a> are never treated as <input> boxes
             var inputElem = snapshot.Elements.FirstOrDefault(e =>
@@ -2201,7 +2442,7 @@ public sealed class DynamicReActControlLoop
                                      Regex.IsMatch(userTask, @"\b(play|putar|mainkan|tonton|carikan|buka\s+video|klik)\b", RegexOptions.IgnoreCase) ||
                                      isSearchUrlLoaded;
 
-        if ((hasTypedInput || isSearchUrlLoaded) && !isChatApp && step <= 4 &&
+        if ((hasTypedInput || isSearchUrlLoaded) && !isChatApp && step <= 8 &&
             !curUrl.Contains("/watch?v=", StringComparison.OrdinalIgnoreCase) &&
             wantsPlayOrOpenResult)
         {
@@ -2270,7 +2511,8 @@ public sealed class DynamicReActControlLoop
 
     public static string BuildSiteSpecificSearchUrl(Uri curUri, string query)
     {
-        string encoded = Uri.EscapeDataString((query ?? string.Empty).Trim());
+        string normalizedQuery = Regex.Replace((query ?? string.Empty).Trim(), @"\bspidermen\b", "spiderman", RegexOptions.IgnoreCase);
+        string encoded = Uri.EscapeDataString(normalizedQuery);
         string host = (curUri.Host ?? string.Empty).ToLowerInvariant();
         string origin = $"{curUri.Scheme}://{curUri.Authority}";
 

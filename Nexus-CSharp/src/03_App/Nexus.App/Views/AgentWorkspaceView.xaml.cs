@@ -5044,12 +5044,19 @@ public partial class AgentWorkspaceView : UserControl
                         out.push('[DIRECT_PDF_URL] ' + directPdfUrl);
                     }
 
-                    // 3. Index all interactive elements (Inputs, Textareas, ContentEditable prompt boxes, Buttons, Links) into window.__nexusDomMap
+                    // 3. Index all interactive elements (prioritizing inputs & main-content links/cards/episodes before header/nav/footer) into window.__nexusDomMap
                     window.__nexusDomMap = window.__nexusDomMap || {};
                     out.push('[INTERACTIVE_ELEMENTS]');
-                    var intCandidates = document.querySelectorAll('input:not([type=""hidden""]), textarea, select, [contenteditable=""true""], [contenteditable=""plaintext-only""], [role=""textbox""], [role=""searchbox""], [role=""combobox""], button, a[href], [role=""button""]');
+                    var rawCandidates = Array.prototype.slice.call(document.querySelectorAll('input:not([type=""hidden""]), textarea, select, [contenteditable=""true""], [contenteditable=""plaintext-only""], [role=""textbox""], [role=""searchbox""], [role=""combobox""], button, a[href], [role=""button""], [data-episode], .play-button, .vjs-big-play-button, video'));
+                    function isNavChrome(el) {
+                        if (!el || typeof el.closest !== 'function') return false;
+                        var tag = (el.tagName || '').toLowerCase();
+                        if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+                        return !!el.closest('header, nav, footer, [role=""navigation""], .navbar, .nav-menu, .mobile-menu, .menu-drawer, #header, #footer, #navbar');
+                    }
+                    var intCandidates = rawCandidates.filter(function(el){ return !isNavChrome(el); }).concat(rawCandidates.filter(function(el){ return isNavChrome(el); }));
                     var intIdx = 0;
-                    for (var ic = 0; ic < intCandidates.length && intIdx < 30; ic++) {
+                    for (var ic = 0; ic < intCandidates.length && intIdx < 60; ic++) {
                         var iEl = intCandidates[ic];
                         if (!isVisibleInViewport(iEl) || isAdOrMalicious(iEl, iEl.href || '')) continue;
                         var iTag = iEl.tagName.toLowerCase();
@@ -5066,12 +5073,16 @@ public partial class AgentWorkspaceView : UserControl
                             iEl.getAttribute('name') ||
                             ''
                         ).replace(/[\r\n|]+/g, ' ').replace(/\s+/g, ' ').trim();
-                        if (!iLabel && (isCe || iTag === 'input' || iTag === 'textarea')) {
+                        if (!iLabel && typeof iEl.querySelector === 'function') {
+                            var chTitle = iEl.querySelector('h1, h2, h3, h4, .title, .name, .ep-title, img[alt], [title]');
+                            if (chTitle) iLabel = (chTitle.innerText || chTitle.getAttribute('title') || chTitle.getAttribute('alt') || '').replace(/[\r\n|]+/g, ' ').replace(/\s+/g, ' ').trim();
+                        }
+                        if (!iLabel && (isCe || iTag === 'input' || iTag === 'textarea' || iTag === 'a')) {
                             var pNode = iEl.parentElement;
-                            if (pNode) iLabel = (pNode.innerText || pNode.getAttribute('aria-label') || '').replace(/[\r\n|]+/g, ' ').trim();
+                            if (pNode) iLabel = (pNode.innerText || pNode.getAttribute('aria-label') || pNode.getAttribute('title') || '').replace(/[\r\n|]+/g, ' ').replace(/\s+/g, ' ').trim();
                         }
                         if (!iLabel) iLabel = iTag;
-                        if (iLabel.length > 95) iLabel = iLabel.substring(0, 95);
+                        if (iLabel.length > 120) iLabel = iLabel.substring(0, 120);
                         var iHref = (iEl.href || '').replace(/\|/g, '');
                         intIdx++;
                         window.__nexusDomMap[intIdx] = iEl;
@@ -5190,8 +5201,8 @@ public partial class AgentWorkspaceView : UserControl
                 return _lastNavigationSucceeded ? string.Empty : navStatusHeader.Trim();
             }
             bestExtracted = navStatusHeader + bestExtracted;
-            if (bestExtracted.Length > 3450)
-                bestExtracted = bestExtracted[..3450];
+            if (bestExtracted.Length > 9600)
+                bestExtracted = bestExtracted[..9600];
             return bestExtracted;
         }
         catch

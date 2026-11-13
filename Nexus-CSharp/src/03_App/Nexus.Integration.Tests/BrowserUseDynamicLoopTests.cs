@@ -1857,4 +1857,289 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.Equal("click_element", dec5.ActionName);
         Assert.Equal(1, dec5.ElementIndex);
     }
+
+    // ========================================================================
+    // BATCH 1C REGRESSION TESTS (Evidence Verification, Completion Gate, Generalized Sub-Item & Series->Episode->Play Drill-Down)
+    // ========================================================================
+
+    [Fact]
+    public void Batch1C_Test1_SeriesBundleCard_To_SpecificEpisode01_To_PlayButton_ExecutesAllStepsWithoutPrematureDone()
+    {
+        string userPrompt = "buka google -> cari website movieku -> klik masuk -> cari VisionQuest (2026) -> memilih bagian Episode 01. dan play";
+        var tabs = Array.Empty<BrowserVirtualTab>();
+
+        // Step 5: Browser is on https://movieku.website/?s=VisionQuest+%282026%29 showing bundle card "VisionQuest (2026) Episode 01-08 End"
+        // Even if the LLM returns {"action":"done"} on Step 5, the Batch 1C Completion Gate MUST reject "done" and click the series card!
+        var searchPageNodes = new List<InteractiveDomNode>
+        {
+            new(1, "a", "link", "Home", null, "https://movieku.website/", false, false, "//nav/a[1]", true),
+            new(2, "a", "link", "WEB-DL 8.6 TV VisionQuest (2026) Episode 01-08 End Series · 2026", null, "https://movieku.website/series/visionquest-2026/", false, false, "//main//a[1]", true)
+        };
+        var snapStep5 = new BrowserLiveStateSnapshot(
+            "s5",
+            "https://movieku.website/?s=VisionQuest+%282026%29",
+            "Search VisionQuest (2026) - Movieku",
+            0,
+            tabs,
+            searchPageNodes,
+            "Search \"VisionQuest (2026)\" VisionQuest (2026) Episode 01-08 End",
+            0,
+            400);
+
+        var decStep5 = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"action\":\"done\",\"next_goal\":\"Selesai\"}",
+            userPrompt,
+            snapStep5,
+            step: 5,
+            alreadyDownloaded: false,
+            hasTypedInput: true);
+
+        Assert.Equal("click_element", decStep5.ActionName);
+        Assert.Equal(2, decStep5.ElementIndex);
+
+        // Step 6: Browser is now on Series Detail Page (https://movieku.website/series/visionquest-2026/)
+        // Page has bundle header plus individual episode links (Episode 08 .. Episode 01).
+        // Agent MUST ignore "Episode 01-08 End" range and click specifically "Episode 01"!
+        var seriesDetailNodes = new List<InteractiveDomNode>
+        {
+            new(1, "a", "link", "VisionQuest (2026) Episode 01-08 End", null, "https://movieku.website/series/visionquest-2026/", false, false, "//h1/a", true),
+            new(2, "a", "link", "Episode 08 End", null, "https://movieku.website/visionquest-2026-episode-08/", false, false, "//ul/li[1]/a", true),
+            new(3, "a", "link", "Episode 02", null, "https://movieku.website/visionquest-2026-episode-02/", false, false, "//ul/li[7]/a", true),
+            new(4, "a", "link", "Episode 01", null, "https://movieku.website/visionquest-2026-episode-01/", false, false, "//ul/li[8]/a", true)
+        };
+        var snapStep6 = new BrowserLiveStateSnapshot(
+            "s6",
+            "https://movieku.website/series/visionquest-2026/",
+            "VisionQuest (2026) Episode 01-08 End",
+            0,
+            tabs,
+            seriesDetailNodes,
+            "Daftar Episode VisionQuest (2026)",
+            0,
+            300);
+
+        var decStep6 = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"action\":\"done\"}",
+            userPrompt,
+            snapStep6,
+            step: 6,
+            alreadyDownloaded: false,
+            hasTypedInput: true);
+
+        Assert.Equal("click_element", decStep6.ActionName);
+        Assert.Equal(4, decStep6.ElementIndex);
+
+        // Step 7: Browser is on Episode 01 Player Page (https://movieku.website/visionquest-2026-episode-01/) with a Play button
+        var episodePlayerNodes = new List<InteractiveDomNode>
+        {
+            new(1, "button", "button", "Play Video", "button", null, false, false, "//button[@class='vjs-big-play-button']", true)
+        };
+        var snapStep7 = new BrowserLiveStateSnapshot(
+            "s7",
+            "https://movieku.website/visionquest-2026-episode-01/",
+            "Nonton VisionQuest (2026) Episode 01 Sub Indo",
+            0,
+            tabs,
+            episodePlayerNodes,
+            "Player Episode 01",
+            0,
+            200);
+
+        var decStep7 = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            null,
+            userPrompt,
+            snapStep7,
+            step: 7,
+            alreadyDownloaded: false,
+            hasTypedInput: true);
+
+        Assert.Equal("click_element", decStep7.ActionName);
+        Assert.Equal(1, decStep7.ElementIndex);
+    }
+
+    [Fact]
+    public void Batch1C_Test2_GeneralizedSubItemExtractor_HandlesDiverseUserRequestsWithoutHardcoding()
+    {
+        // 1. Episode with leading zero ("memilih bagian Episode 01. dan play")
+        var sub1 = AgentTaskChecklistContract.TryExtractRequestedSubItem(
+            "buka google -> cari website movieku -> klik masuk -> cari VisionQuest (2026) -> memilih bagian Episode 01. dan play");
+        Assert.NotNull(sub1);
+        Assert.Equal("episode", sub1!.SubItemKind);
+        Assert.Equal(1, sub1.NumberValue);
+
+        // Range "Episode 01-08 End" MUST NOT match Episode 1!
+        Assert.False(AgentTaskChecklistContract.IsSpecificSubItemMatch("VisionQuest (2026) Episode 01-08 End", sub1));
+        Assert.False(AgentTaskChecklistContract.IsSpecificSubItemMatch("https://movieku.website/visionquest-2026-episode-01-08-end/", sub1));
+        // Individual Episode 01 / Episode 1 MUST match!
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("Episode 01", sub1));
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("VisionQuest (2026) Episode 1 Sub Indo", sub1));
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("https://movieku.website/visionquest-2026-episode-01/", sub1));
+
+        // 2. Single-stage prompt without arrows ("buka movieku cari One Piece memilih bagian Episode 05 dan play")
+        var (site2, query2, _) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask(
+            "buka movieku cari One Piece memilih bagian Episode 05 dan play");
+        Assert.Equal("https://movieku.website/", site2);
+        Assert.Equal("One Piece", query2);
+        var sub2 = AgentTaskChecklistContract.TryExtractRequestedSubItem("buka movieku cari One Piece memilih bagian Episode 05 dan play");
+        Assert.NotNull(sub2);
+        Assert.Equal(5, sub2!.NumberValue);
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("One Piece Episode 05", sub2));
+        Assert.False(AgentTaskChecklistContract.IsSpecificSubItemMatch("One Piece Episode 01", sub2));
+
+        // 3. Resolution selector ("pilih 1080p")
+        var sub3 = AgentTaskChecklistContract.TryExtractRequestedSubItem("buka lk21 cari Dune Part Two pilih 1080p dan download");
+        Assert.NotNull(sub3);
+        Assert.Equal("resolution", sub3!.SubItemKind);
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("Download MP4 1080p Server 1", sub3));
+
+        // 4. Named section selector ("klik bagian Sejarah")
+        var sub4 = AgentTaskChecklistContract.TryExtractRequestedSubItem("buka wikipedia cari Komputer klik bagian Sejarah");
+        Assert.NotNull(sub4);
+        Assert.Equal("section", sub4!.SubItemKind);
+        Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("Bagian Sejarah Perkembangan", sub4));
+    }
+
+    [Fact]
+    public void Batch1C_Test3_ContentFirstDomIndexing_PrioritizesMainContentCardsAndStripsTargetBlank()
+    {
+        string domScript = BrowserUseDomEngine.GetBuildDomTreeScript();
+        Assert.Contains("isInsideNavOrHeader", domScript, StringComparison.Ordinal);
+        Assert.Contains("isRenderedContentElement", domScript, StringComparison.Ordinal);
+        Assert.Contains("nextIdx <= 60", domScript, StringComparison.Ordinal);
+
+        string clickScript = BrowserUseDomEngine.GetExecuteElementActionScript(
+            index: 2,
+            fallbackXPath: "//a[1]",
+            actionType: "click",
+            expectedTag: "a",
+            expectedRole: "link");
+        Assert.Contains("removeAttribute('target')", clickScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Batch1C_Test4_ThreeLevelActionVerification_TracksVerifiedAndFailedStates()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+
+        bool failMode = false;
+        var workspaceVm = new AgentWorkspaceViewModel { LastBrowserUrl = "https://example.org" };
+        workspaceVm.BrowserNavigateRequested += url =>
+        {
+            if (failMode)
+            {
+                return Task.FromResult("[NAVIGATION_STATUS] FAILED:HostNameNotResolved\n[PAGE_TITLE] Error\n[PAGE_URL] https://example.org");
+            }
+            workspaceVm.LastBrowserUrl = url;
+            return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Loaded\n[PAGE_URL] " + url);
+        };
+
+        var adapter = new WebView2NativeAdapter(workspaceVm);
+        var search = new ExternalSearchProvider();
+        var files = new NexusWorkspaceFileService(workspaceVm);
+        var loop = new DynamicReActControlLoop(adapter, search, files, workspaceVm);
+        var snap = new BrowserLiveStateSnapshot("s1", "https://example.org", "Example", 0, Array.Empty<BrowserVirtualTab>(), Array.Empty<InteractiveDomNode>(), "", 0, 0);
+
+        var okRes = await loop.ExecuteIndexedActionAsync(
+            new AgentStepDecision("OK", "", "Open target", "go_to_url", TextOrUrl: "https://example.org/docs"),
+            snap);
+        Assert.False(okRes.IsError);
+        Assert.Equal(ActionVerificationStatus.Verified, okRes.VerificationStatus);
+        Assert.Contains("https://example.org/docs", okRes.VerificationEvidence ?? string.Empty, StringComparison.Ordinal);
+
+        failMode = true;
+        var failRes = await loop.ExecuteIndexedActionAsync(
+            new AgentStepDecision("OK", "", "Open broken", "go_to_url", TextOrUrl: "https://broken.example.org"),
+            snap);
+        Assert.True(failRes.IsError);
+        Assert.Equal(ActionVerificationStatus.Failed, failRes.VerificationStatus);
+    }
+
+    [Fact]
+    public async Task Batch1C_Test5_EndToEndRunDynamicAgentLoop_CompletesFullMoviekuSeriesToEpisode01Flow_WithoutStoppingAtStep4()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+
+        string prompt = "buka google -> cari website movieku -> klik masuk -> cari VisionQuest (2026) -> memilih bagian Episode 01. dan play";
+        var visitedUrls = new List<string>();
+        var workspaceVm = new AgentWorkspaceViewModel();
+
+        workspaceVm.BrowserNavigateRequested += url =>
+        {
+            visitedUrls.Add(url);
+            workspaceVm.LastBrowserUrl = url;
+            if (url.Contains("google.com", StringComparison.OrdinalIgnoreCase) && !url.Contains("/search", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Google\n[PAGE_URL] https://www.google.com/\n[INTERACTIVE_ELEMENTS]\n" +
+                    "[1]|textarea|combobox|text|0|Telusuri||//textarea[@name='q']";
+            }
+            else if (url.Contains("google.com/search", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] movieku - Google Search\n[PAGE_URL] " + url + "\n[INTERACTIVE_ELEMENTS]\n" +
+                    "[1]|a|link||0|Movieku - Nonton Film & Series|https://movieku.website/|//a[1]";
+            }
+            else if (string.Equals(url.TrimEnd('/'), "https://movieku.website", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Movieku\n[PAGE_URL] https://movieku.website/\n[INTERACTIVE_ELEMENTS]\n" +
+                    "[1]|a|link||0|Home|https://movieku.website/|//nav/a[1]";
+            }
+            else if (url.Contains("movieku.website/?s=", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Search VisionQuest (2026)\n[PAGE_URL] " + url + "\n[INTERACTIVE_ELEMENTS]\n" +
+                    "[1]|a|link||0|VisionQuest (2026) Episode 01-08 End|https://movieku.website/series/visionquest-2026/|//main//a[1]";
+            }
+            else if (url.Contains("/series/visionquest-2026", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] VisionQuest (2026) Series\n[PAGE_URL] https://movieku.website/series/visionquest-2026/\n[INTERACTIVE_ELEMENTS]\n" +
+                    "[1]|a|link||0|Episode 02|https://movieku.website/visionquest-2026-episode-02/|//ul/li[1]/a\n" +
+                    "[2]|a|link||0|Episode 01|https://movieku.website/visionquest-2026-episode-01/|//ul/li[2]/a";
+            }
+            else if (url.Contains("visionquest-2026-episode-01", StringComparison.OrdinalIgnoreCase))
+            {
+                workspaceVm.LastBrowserTitle =
+                    "[NAVIGATION_STATUS] OK\n[PAGE_TITLE] VisionQuest (2026) Episode 01\n[PAGE_URL] https://movieku.website/visionquest-2026-episode-01/\n[SEMANTIC_CONTENT]\n" +
+                    "- Streaming VisionQuest (2026) Episode 01 Sub Indo";
+            }
+            return Task.FromResult(workspaceVm.LastBrowserTitle);
+        };
+
+        var adapter = new WebView2NativeAdapter(workspaceVm);
+        var search = new ExternalSearchProvider();
+        var files = new NexusWorkspaceFileService(workspaceVm);
+        var loop = new DynamicReActControlLoop(adapter, search, files, workspaceVm);
+
+        var summary = await loop.RunDynamicAgentLoopAsync(prompt);
+        Assert.True(summary.IsSuccess);
+        Assert.True(summary.Benchmark.ActionsExecuted >= 6, $"Expected >= 6 actions, got {summary.Benchmark.ActionsExecuted}");
+        Assert.Equal("https://movieku.website/visionquest-2026-episode-01/", workspaceVm.LastBrowserUrl);
+    }
+
+    [Fact]
+    public void Batch1C_Test6_CardSiblingBadgeOverlayAndPrioritySubItemIndexing_NeverTriggersFalsePositiveOverlayError()
+    {
+        string actionScript = BrowserUseDomEngine.GetExecuteElementActionScript(
+            index: 2,
+            fallbackXPath: "//a[@href=\"https://movieku.website/series/visionquest-2026/\"]",
+            actionType: "click",
+            valueToInputOrSelect: null,
+            pressEnter: false,
+            expectedTag: "a",
+            expectedRole: "a");
+
+        // Verify modal-scoped overlay guard is present so sibling card badges (WEB-DL, TV, 8.6) do not cause false-positive ELEMENT_COVERED_BY_OVERLAY
+        Assert.Contains("blockingOverlay", actionScript, StringComparison.Ordinal);
+        Assert.Contains("[role=\"dialog\"]", actionScript, StringComparison.Ordinal);
+
+        // Verify DOM indexing script prioritizes episode/sub-item links in Pass 1B-1 before generic article/main links
+        string domScript = BrowserUseDomEngine.GetBuildDomTreeScript(60);
+        int highSignalIdx = domScript.IndexOf("highSignalLinks", StringComparison.Ordinal);
+        int priorityLinksIdx = domScript.IndexOf("var priorityLinks =", StringComparison.Ordinal);
+        Assert.True(highSignalIdx > 0 && priorityLinksIdx > highSignalIdx);
+    }
 }

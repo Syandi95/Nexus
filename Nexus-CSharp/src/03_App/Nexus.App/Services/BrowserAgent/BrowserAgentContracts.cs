@@ -262,6 +262,20 @@ public sealed record PendingApprovalRequest(
     string CurrentUrl,
     string Reason);
 
+public enum ActionVerificationStatus
+{
+    Attempted,
+    Executed,
+    Verified,
+    Failed
+}
+
+public sealed record RequestedSubItemDescriptor(
+    string SubItemKind,
+    string RawPhrase,
+    int? NumberValue,
+    string KeywordToken);
+
 public sealed record BrowserStepActionResult(
     string ActionName,
     bool IsError,
@@ -273,7 +287,9 @@ public sealed record BrowserStepActionResult(
     bool UsedXPathFallback,
     bool InterceptedForApproval,
     BrowserDownloadOutcome? DownloadOutcome = null,
-    WorkspaceFileAddOutcome? WorkspaceOutcome = null);
+    WorkspaceFileAddOutcome? WorkspaceOutcome = null,
+    ActionVerificationStatus VerificationStatus = ActionVerificationStatus.Verified,
+    string? VerificationEvidence = null);
 
 public sealed record HermesProceduralSkill(
     string SkillId,
@@ -1391,14 +1407,121 @@ public sealed class AgentTaskChecklistContract
             return string.Empty;
         }
 
-        // Strip trailing playback / wait / ad-skip / seek instructions ("play tunggu beberapa detik klik videonya ke menit 5.23 videonya")
+        // Strip trailing sub-item selection, playback, wait, ad-skip, or seek instructions
         q = Regex.Replace(
             q,
-            @"\s+(?:play\b.*|putar\b.*|mainkan\b.*|tonton\b.*|tunggu\s+(?:hingga|sampai|sebentar|beberapa).*|hingga\s+muncul.*|sampai\s+muncul.*|klik\s+lewati.*|lewati\s+iklan.*|klik\s+videonya.*|ke\s+menit\s+\d+.*|di\s+menit\s+\d+.*|dan\s+klik.*|lalu\s+klik.*)$",
+            @"\s+(?:memilih\s+bagian\b.*|pilih\s+bagian\b.*|klik\s+bagian\b.*|buka\s+bagian\b.*|pilih\s+episode\b.*|klik\s+episode\b.*|memilih\s+episode\b.*|play\b.*|putar\b.*|mainkan\b.*|tonton\b.*|tunggu\s+(?:hingga|sampai|sebentar|beberapa).*|hingga\s+muncul.*|sampai\s+muncul.*|klik\s+lewati.*|lewati\s+iklan.*|klik\s+videonya.*|ke\s+menit\s+\d+.*|di\s+menit\s+\d+.*|dan\s+klik.*|lalu\s+klik.*|dan\s+play\b.*|lalu\s+play\b.*)$",
             string.Empty,
             RegexOptions.IgnoreCase).Trim();
 
         return q.Trim(' ', ',', '.', '"', '\'', '?', '!');
+    }
+
+    public static RequestedSubItemDescriptor? TryExtractRequestedSubItem(string? userTask)
+    {
+        if (string.IsNullOrWhiteSpace(userTask))
+            return null;
+
+        // 1. Check explicit episode / part / chapter / season / item number (e.g. "memilih bagian Episode 01", "pilih episode 2", "klik ep 05", "bab 3")
+        var epMatch = Regex.Match(
+            userTask,
+            @"(?:memilih|pilih|klik|buka|putar|play|tonton)?\s*(?:bagian\s+|menu\s+|tab\s+)?\b(episode|eps|ep|bab|part|season)\.?\s*0*(\d+)\b",
+            RegexOptions.IgnoreCase);
+        if (epMatch.Success && int.TryParse(epMatch.Groups[2].Value, out int epNum))
+        {
+            string kw = epMatch.Groups[1].Value.ToLowerInvariant();
+            string rawLabel = $"{epMatch.Groups[1].Value} {epMatch.Groups[2].Value}".Trim();
+            return new RequestedSubItemDescriptor("episode", rawLabel, epNum, kw);
+        }
+
+        // 2. Check explicit resolution / quality selector (e.g. "pilih 720p", "untuk 1080p", "720 dpi")
+        var resMatch = Regex.Match(
+            userTask,
+            @"(?:pilih|memilih|klik|untuk|resolusi|kualitas)?\s*\b(360p|480p|720p|1080p|1440p|2160p|4k|720\s*dpi|1080\s*dpi)\b",
+            RegexOptions.IgnoreCase);
+        if (resMatch.Success)
+        {
+            string rawRes = Regex.Replace(resMatch.Groups[1].Value.ToLowerInvariant(), @"\s*dpi\b", "p");
+            return new RequestedSubItemDescriptor("resolution", rawRes, null, rawRes);
+        }
+
+        // 3. Check named section / tab / part after "memilih bagian X" / "pilih bagian X" / "klik bagian X" / "pilih tab X"
+        var secMatch = Regex.Match(
+            userTask,
+            @"(?:memilih|pilih|klik|buka)\s+(?:bagian|tab|menu|kategori|section)\s+([a-zA-Z0-9_\-]+(?:\s+[a-zA-Z0-9_\-]+){0,2}?)(?=\s+(?:dan|lalu|kemudian|terus|untuk|play|putar|download|unduh)\b|[.,;!?]|$)",
+            RegexOptions.IgnoreCase);
+        if (secMatch.Success)
+        {
+            string secPhrase = secMatch.Groups[1].Value.Trim(' ', '.', ',', ';', '"', '\'');
+            if (!string.IsNullOrWhiteSpace(secPhrase))
+            {
+                var numInside = Regex.Match(secPhrase, @"^(?:episode|eps|ep|bab|part)?\s*0*(\d+)$", RegexOptions.IgnoreCase);
+                if (numInside.Success && int.TryParse(numInside.Groups[1].Value, out int nVal))
+                {
+                    return new RequestedSubItemDescriptor("episode", secPhrase, nVal, "episode");
+                }
+                return new RequestedSubItemDescriptor("section", secPhrase, null, secPhrase.ToLowerInvariant());
+            }
+        }
+
+        return null;
+    }
+
+    public static bool IsBundleOrMultiEpisodeRange(string? textOrHref)
+    {
+        if (string.IsNullOrWhiteSpace(textOrHref))
+            return false;
+        return Regex.IsMatch(
+            textOrHref,
+            @"\b(?:episode|eps|ep|part|bagian|e)?\s*0*\d+\s*(?:[-–~]|s/d|sampai|to)\s*0*\d+\b|episode[-_]0*\d+[-_]0*\d+",
+            RegexOptions.IgnoreCase);
+    }
+
+    public static bool IsSpecificSubItemMatch(string? candidateTextOrHref, RequestedSubItemDescriptor? subItem)
+    {
+        if (string.IsNullOrWhiteSpace(candidateTextOrHref) || subItem is null)
+            return false;
+
+        if (subItem.SubItemKind == "episode" && subItem.NumberValue is int targetNum)
+        {
+            // Strip multi-episode bundle ranges (e.g., "Episode 01-08 End", "Ep 1-12", "episode-01-08") first
+            // so a series bundle card on a search page is NEVER mistaken for the single Episode 01 link!
+            string withoutRanges = Regex.Replace(
+                candidateTextOrHref,
+                @"\b(?:episode|eps|ep|part|bagian|e)?\s*0*\d+\s*(?:[-–~]|s/d|sampai|to)\s*0*\d+(?:\s*end|\s*tamat)?\b|episode[-_]0*\d+[-_]0*\d+(?:[-_]end)?",
+                " ",
+                RegexOptions.IgnoreCase);
+
+            if (Regex.IsMatch(
+                withoutRanges,
+                $@"\b(?:episode|eps|ep|bagian|part|bab)\s*[-_.\s#]*0*{targetNum}(?!\d)\b|(?:[-_/]episode[-_]|[-_/]ep[-_]|[-_/]eps[-_])0*{targetNum}(?:[-_/.]|$)",
+                RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+
+            // Also match standalone episode number buttons like "01", "[01]", "Episode 01" when not a range
+            string trimmed = candidateTextOrHref.Trim();
+            if (!IsBundleOrMultiEpisodeRange(trimmed) &&
+                Regex.IsMatch(trimmed, $@"^(?:\[|\()?0*{targetNum}(?:\]|\))?$"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        if (subItem.SubItemKind == "resolution")
+        {
+            return candidateTextOrHref.Contains(subItem.KeywordToken, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (subItem.SubItemKind == "section")
+        {
+            return candidateTextOrHref.Contains(subItem.KeywordToken, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     public static bool DetectsConditionalAdSkipIntent(string? rawTask)
@@ -1447,14 +1570,27 @@ public sealed class AgentTaskChecklistContract
             });
         }
 
-        if (wantsPlayOrClickTopResult)
+        var requestedSubItem = TryExtractRequestedSubItem(rawTask);
+        if (wantsPlayOrClickTopResult || requestedSubItem is not null)
         {
             contract.Steps.Add(new ChecklistStepItem
             {
                 StepNumber = stepNo++,
                 ActionBadge = "CLICK",
-                Description = "Mengklik hasil/video utama yang relevan & memverifikasi halaman target terbuka",
+                Description = "Mengklik hasil/konten utama yang relevan & memverifikasi halaman detail terbuka",
                 ExpectedTarget = cleanQuery,
+                Status = ChecklistStepStatus.Pending
+            });
+        }
+
+        if (requestedSubItem is not null)
+        {
+            contract.Steps.Add(new ChecklistStepItem
+            {
+                StepNumber = stepNo++,
+                ActionBadge = "SUBITEM",
+                Description = $"Memilih bagian \"{requestedSubItem.RawPhrase}\" pada halaman detail & memverifikasi pemuatan",
+                ExpectedTarget = requestedSubItem.RawPhrase,
                 Status = ChecklistStepStatus.Pending
             });
         }

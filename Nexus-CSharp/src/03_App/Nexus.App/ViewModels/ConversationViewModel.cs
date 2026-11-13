@@ -3819,7 +3819,7 @@ namespace Nexus.App.ViewModels
                         try
                         {
                             assistantMessage.ReasoningContent = liveMarkdown.Replace("> ", string.Empty);
-                            assistantMessage.ThinkingDurationText = $"● Menjalankan langkah {Math.Min(liveUpdateTick, 4)} · {runSw.Elapsed.TotalSeconds:F1}s";
+                            assistantMessage.ThinkingDurationText = $"● Menjalankan langkah {Math.Min(liveUpdateTick, 12)} · {runSw.Elapsed.TotalSeconds:F1}s";
                             assistantMessage.IsThinkingCollapsed = false;
                         }
                         catch { }

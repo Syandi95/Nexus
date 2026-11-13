@@ -481,7 +481,7 @@ public static class BrowserUseDomEngine
         return sb.ToString();
     }
 
-    public static string GetBuildDomTreeScript(int viewportExpansionPx = 600, int maxElements = 35)
+    public static string GetBuildDomTreeScript(int viewportExpansionPx = 600, int maxElements = 60)
     {
         return $@"(function() {{
             try {{
@@ -623,11 +623,26 @@ public static class BrowserUseDomEngine
                             parent = parent.parentElement;
                         }}
                     }}
-                    if (!lbl && tag === 'a' && (el.href || '').indexOf('/watch?v=') >= 0) {{
-                        var ytCard = el.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer, ytd-compact-video-renderer');
-                        if (ytCard) {{
-                            var h3El = ytCard.querySelector('#video-title, h3, h4, .media-item-headline');
-                            if (h3El) lbl = (h3El.innerText || h3El.getAttribute('title') || h3El.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                    if (!lbl && typeof el.querySelector === 'function') {{
+                        var childTitleEl = el.querySelector('h1, h2, h3, h4, .title, .name, .ep-title, .film-title, [title], [aria-label], img[alt]');
+                        if (childTitleEl) {{
+                            lbl = (childTitleEl.innerText || childTitleEl.getAttribute('title') || childTitleEl.getAttribute('alt') || childTitleEl.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                        }}
+                    }}
+                    if (!lbl && tag === 'a' && typeof el.closest === 'function') {{
+                        var cardWrap = el.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer, ytd-compact-video-renderer, article, .card, .item, .post, .film-card, .bixbox, li');
+                        if (cardWrap && typeof cardWrap.querySelector === 'function') {{
+                            var h3El = cardWrap.querySelector('#video-title, h1, h2, h3, h4, .title, .name, .media-item-headline, img[alt]');
+                            if (h3El) lbl = (h3El.innerText || h3El.getAttribute('title') || h3El.getAttribute('alt') || h3El.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                        }}
+                    }}
+                    if ((tag === 'video' || (el.classList && (el.classList.contains('play-button') || el.classList.contains('vjs-big-play-button')))) && (!lbl || lbl === tag)) {{
+                        lbl = 'Play Video';
+                    }}
+                    if (tag === 'a' && el.href) {{
+                        var epHrefMatch = el.href.match(/(?:episode|eps|ep)[-_\/]0*(\d+)(?:[-_\/.]|$)/i);
+                        if (epHrefMatch && (!lbl || lbl === tag || /^\d+$/.test(lbl))) {{
+                            lbl = 'Episode ' + epHrefMatch[1] + (lbl && lbl !== tag && !/^\d+$/.test(lbl) ? ' - ' + lbl : '');
                         }}
                     }}
                     if (!lbl) lbl = tag;
@@ -735,11 +750,30 @@ public static class BrowserUseDomEngine
                     }}
                 }}
 
-                // Priority Pass 1B: Index primary content/video/movie/article result links (e.g., YouTube a#video-title, Movie cards, Scholar titles) before generic nav buttons
-                var priorityLinks = document.querySelectorAll('a#video-title, a#video-title-link, ytd-video-renderer a[href*=""/watch?v=""], ytm-video-with-context-renderer a[href*=""/watch?v=""], a[href*=""/watch?v=""], .gs_rt a, article h2 a, article h3 a, .film-card a, .bixbox a[href], h3 a[href^=""http""], a.obj_galley_link, a[href$="".pdf""]');
+                // Priority Pass 1B: Index primary content/video/movie/episode/article links & player buttons outside header/nav/footer first
+                function isInsideNavOrHeader(el) {{
+                    if (!el || typeof el.closest !== 'function') return false;
+                    return !!el.closest('header, nav, footer, [role=""navigation""], .navbar, .nav-menu, .mobile-menu, .menu-drawer, #header, #footer, #navbar');
+                }}
+                function isRenderedContentElement(el) {{
+                    var st = getStyle(el);
+                    if (!st || st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') < 0.05) return false;
+                    var r = getRect(el);
+                    return !!r && r.width >= 6 && r.height >= 6;
+                }}
+                // Pass 1B-1: High-signal episode/sub-item links, video titles, and player controls FIRST so genre/tag links never crowd them out
+                var highSignalLinks = document.querySelectorAll('a#video-title, a#video-title-link, ytd-video-renderer a[href*=""/watch?v=""], ytm-video-with-context-renderer a[href*=""/watch?v=""], a[href*=""/watch?v=""], .gs_rt a, a[href*=""episode"" i], a[href*=""-ep-"" i], a[href*=""/ep-"" i], [data-episode], .episodes a, .episode-list a, .episodelist a, .eplister a, .ep-list a, #episode-list a, .play-button, .vjs-big-play-button, [aria-label*=""play"" i], [aria-label*=""putar"" i], video, a.obj_galley_link, a[href$="".pdf""], h1 a[href], h2 a[href], h3 a[href], .film-card a[href], .bixbox a[href]');
+                for (var hsl = 0; hsl < highSignalLinks.length && nextIdx <= {maxElements}; hsl++) {{
+                    var hEl = highSignalLinks[hsl];
+                    if (!isInsideNavOrHeader(hEl) && isElementAccepted(hEl) && isRenderedContentElement(hEl)) {{
+                        registerElement(hEl);
+                    }}
+                }}
+                // Pass 1B-2: General article/main links and buttons outside header/nav/footer
+                var priorityLinks = document.querySelectorAll('article a[href], main a[href], [role=""main""] a[href], h4 a[href], a[href^=""http""], button');
                 for (var pl = 0; pl < priorityLinks.length && nextIdx <= {maxElements}; pl++) {{
                     var lEl = priorityLinks[pl];
-                    if (isElementAccepted(lEl) && isElementVisible(lEl)) {{
+                    if (!isInsideNavOrHeader(lEl) && isElementAccepted(lEl) && isRenderedContentElement(lEl)) {{
                         registerElement(lEl);
                     }}
                 }}
@@ -936,10 +970,27 @@ public static class BrowserUseDomEngine
                     return JSON.stringify({{ ok: false, stale: true, usedXPath: false, error: 'ELEMENT_NOT_VISIBLE' }});
                 }}
 
-                // Batch 1A Freshness Guard #5: Center hit-test (elementFromPoint) must not find an obscuring overlay
+                // Batch 1A Freshness Guard #5: Center hit-test (elementFromPoint) must not find an obscuring modal/dialog overlay
                 if (el.getAttribute && el.getAttribute('data-occluded') === 'true') {{
                     return JSON.stringify({{ ok: false, stale: true, usedXPath: false, error: 'ELEMENT_COVERED_BY_OVERLAY' }});
                 }}
+                try {{
+                    var fixedAds = document.querySelectorAll ? document.querySelectorAll('div, ins, iframe, a[target=""_blank""]') : [];
+                    for (var fai = 0; fai < fixedAds.length; fai++) {{
+                        var fa = fixedAds[fai];
+                        if (!fa || fa === el || (fa.contains && fa.contains(el)) || (el.contains && el.contains(fa))) continue;
+                        if (fa.id === '__nexus_browser_use_overlay') continue;
+                        if (fa.getAttribute && (fa.getAttribute('role') === 'dialog' || fa.getAttribute('aria-modal') === 'true' || fa.getAttribute('data-occluded') === 'true')) continue;
+                        var fast = window.getComputedStyle ? window.getComputedStyle(fa) : null;
+                        if (fast && (fast.position === 'fixed' || fast.position === 'absolute')) {{
+                            var faOp = parseFloat(fast.opacity || '1');
+                            var faZ = parseInt(fast.zIndex || '0', 10);
+                            if (faOp < 0.15 || (faZ > 9999 && !(fa.innerText || '').trim())) {{
+                                fa.style.pointerEvents = 'none';
+                            }}
+                        }}
+                    }}
+                }} catch(fae) {{}}
                 var cx = r.left + r.width / 2;
                 var cy = r.top + r.height / 2;
                 if (typeof document.elementFromPoint === 'function') {{
@@ -956,6 +1007,17 @@ public static class BrowserUseDomEngine
                                     break;
                                 }}
                                 cur = cur.parentElement;
+                            }}
+                            if (!hitOk) {{
+                                var blockingOverlay = (typeof topEl.closest === 'function')
+                                    ? topEl.closest('[role=""dialog""], [aria-modal=""true""], [data-occluded=""true""], .modal-backdrop, #modal-backdrop')
+                                    : null;
+                                var elInsideSameModal = (blockingOverlay && typeof el.closest === 'function')
+                                    ? el.closest('[role=""dialog""], [aria-modal=""true""], [data-occluded=""true""], .modal-backdrop, #modal-backdrop')
+                                    : null;
+                                if (!blockingOverlay || blockingOverlay === elInsideSameModal) {{
+                                    hitOk = true;
+                                }}
                             }}
                             if (!hitOk) {{
                                 return JSON.stringify({{ ok: false, stale: true, usedXPath: false, error: 'ELEMENT_COVERED_BY_OVERLAY' }});
@@ -975,6 +1037,13 @@ public static class BrowserUseDomEngine
                 try {{ if (typeof el.focus === 'function') el.focus(); }} catch(fe) {{}}
 
                 if (act === 'click') {{
+                    var linkAnchor = (actualTag === 'a') ? el : (typeof el.closest === 'function' ? el.closest('a[href]') : null);
+                    var resolvedClickHref = (linkAnchor && linkAnchor.href) ? linkAnchor.href : (el.href || '');
+                    try {{
+                        if (linkAnchor && linkAnchor.getAttribute && linkAnchor.getAttribute('target') === '_blank') {{
+                            linkAnchor.removeAttribute('target');
+                        }}
+                    }} catch(te) {{}}
                     ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(function(evType) {{
                         try {{
                             el.dispatchEvent(new MouseEvent(evType, {{ bubbles: true, cancelable: true, clientX: cx, clientY: cy }}));
@@ -983,7 +1052,17 @@ public static class BrowserUseDomEngine
                     if (typeof el.click === 'function') {{
                         try {{ el.click(); }} catch(ce) {{}}
                     }}
-                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false, href: el.href || '' }});
+                    if (actualTag === 'video' && typeof el.play === 'function') {{
+                        try {{ el.play(); }} catch(ve) {{}}
+                    }} else {{
+                        try {{
+                            var pageVid = document.querySelector ? document.querySelector('video') : null;
+                            if (pageVid && typeof pageVid.play === 'function' && (actualTag === 'button' || (el.className && String(el.className).match(/play|vjs/i)))) {{
+                                pageVid.play();
+                            }}
+                        }} catch(pve) {{}}
+                    }}
+                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false, href: resolvedClickHref }});
                 }}
                 else if (act === 'input') {{
                     var val = '{safeVal}';
