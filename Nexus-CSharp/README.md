@@ -47,10 +47,16 @@ Nexus-CSharp/
 
 ---
 
-## 4. Status Fase Migrasi Saat Ini
+## 4. Status Fase Migrasi & Arsitektur Saat Ini
 
 - [x] **Fase 0A (Formal Performance Baseline Benchmark)**: SELESAI & DIBEKUKAN (`powershell_v1.7_baseline.json`).
-- [ ] **Fase 0B (Contract & Schema Freeze)**: BERJALAN (Penyiapan DTO C# & Skema JSON di `docs/contracts/`).
+- [x] **Fase 0B (Contract & Schema Freeze)**: SELESAI (`00_Contracts/Nexus.Contracts`).
+- [x] **Fase 1–5 (Arsitektur 4-Lapis & Fitur Inti C# .NET 8)**: SELESAI & AKTIF
+  - `00_Contracts`: Interface & DTO murni lintas modul.
+  - `01_Foundation`: Konfigurasi portabel, logging, dan registry.
+  - `02_Modules`: Fitur independen (AI Llama, PDF Utilities, Image Subsystem/OCR, Safe-write Editing, Color Management).
+  - `03_App`: Aplikasi WPF Desktop (`Nexus.App`) & suite pengujian integrasi (`Nexus.Integration.Tests`).
+- [x] **High-Fidelity Document Conversion**: Native C# `NexusConverterEngine` terintegrasi via out-of-process CLI.
 
 ---
 
@@ -211,59 +217,26 @@ Tidak ada alasan membuat nama-nama seperti `NexusModern2`, `NexusStandard2`, `Ne
 
 ---
 
-## 6. Experimental iLovePDF / Solid Documents Converter Dependencies
+## 6. Native C# Document Conversion Engine (NexusConverterEngine)
 
-Bagian ini mendokumentasikan pustaka biner native yang dipentaskan (*staged*) secara terisolasi ke direktori eksperimen lokal `D:\NEXUS\Engine\iLovePDF-SolidConverters-Experimental` untuk keperluan riset kelayakan fitur konversi dokumen:
-- **TOOL-01:** PDF to Word (`.docx`)
-- **TOOL-02:** PDF to Excel (`.xlsx`)
-- **TOOL-03:** PDF to PowerPoint (`.pptx`)
-- **TOOL-05:** Extract Images dari PDF (ekstraksi citra tertanam, bukan re-rasterisasi halaman)
+Modul konversi dokumen pada NEXUS dibangun secara mandiri menggunakan **100% C# native (.NET 8)** tanpa ketergantungan pada pustaka biner *proprietary* tertutup pihak ketiga.
 
-> [!IMPORTANT]
-> **Pengecualian Mutlak & Komitmen Arsitektur:**
-> 1. **TOOL-04 (PDF to JPG):** Dikeluarkan sepenuhnya dari scope eksperimen dependensi baru. Fitur PDF to JPG pada NEXUS tetap wajib menggunakan `Docnet.Core` + `SkiaSharp` tanpa perubahan engine, alur, atau refactoring.
-> 2. **Ekspor PDF/PNG NEXUS:** Tetap dipertahankan tanpa perubahan apa pun.
-> 3. **TOOL-06 (PDF/A):** Dikecualikan. Pustaka `PDFNetC.dll` dan kunci OEM komersial Apryse/PDFTron **tidak disalin**.
-> 4. **Status Repositori Source Code:** Penambahan seksi README ini adalah satu-satunya perubahan dalam repositori NEXUS. Tidak ada source code, project file, atau package reference C# yang dimodifikasi.
+### 6.1 Cakupan Format & Fitur
+- **PDF to Word (`.docx`)**: Rekonstruksi tata letak, paragraf, alignment teks, tabel bergaris/borderless, WordArt editable, dan penataan gambar embedded berbasis OpenXML (`DocumentFormat.OpenXml`).
+- **PDF to Excel (`.xlsx`)**: Konversi tabel PDF ke spreadsheet native (mendukung mode single-sheet `--single-sheet` atau multi-sheet) berbasis `ClosedXML` / OpenXML.
+- **PDF to PowerPoint (`.pptx`)**: Konversi halaman PDF menjadi slide presentasi native OpenXML.
+- **Extract Images**: Ekstraksi langsung citra tertanam (*embedded images*) dari stream PDF masukan ke format `.png` tanpa re-rasterisasi halaman.
+- **PDF to Images / Rendering**: Render visual halaman PDF ke JPG/PNG dengan DPI dan kualitas terkalibrasi melalui `Docnet.Core` + `SkiaSharp`.
 
-### 6.1 Informasi Paket Sumber & Lokasi Staging
-
-- **Paket Sumber:** Microsoft Store `ILOVEPDFS.L.iLovePDF-PDFReaderandEditor_2.3.0.0_x64__0q01bhdkqq106`
-- **Path Sumber Asal:** `C:\Program Files\WindowsApps\ILOVEPDFS.L.iLovePDF-PDFReaderandEditor_2.3.0.0_x64__0q01bhdkqq106\iLovePDF`
-- **Folder Tujuan Lokal:** `D:\NEXUS\Engine\iLovePDF-SolidConverters-Experimental`
-- **Arsitektur Host:** Windows x64 (PE32+)
-
-### 6.2 Manifest Detail Berkas yang Dipentaskan
-
-| Nama File | Ukuran (Bytes) | Arsitektur | Versi File / Produk | SHA-256 Digest | Pemilik / Vendor Terbukti | Fungsi Teknis Terverifikasi | Status Penggunaan |
-|---|---|---|---|---|---|---|---|
-| `ConverterCoreLight.dll` | 272.920 | x64 | 10.0.19910.1 | `9AF05F36DB2DF6C0C080FE9B60A37B56C563CBFBFC4585BF20B5087E7F5646FA` | Solid Documents Limited | Procedural C API Wrapper untuk `pdfToWordConverter`, `pdfToExcelConverter`, `pdfToPowerPointConverter`, dan `PdfConverterExtractImages`. | **UNKNOWN** |
-| `SolidCore.dll` | 1.213.464 | x64 | 10.0.19910.1 | `F02C1ED04FCC5770DCCFF11C67D74F07F8245C446C5776671D60E2FAA9A7B1C9` | Solid Documents Limited | Core engine rekonstruksi layout dokumen Solid Documents. | **UNKNOWN** |
-| `SPal.dll` | 1.073.176 | x64 | 10.0.19910.1 | `BC6A3D57058C0FD0CB60A70A3FC6414321F8FC298314589C1BA1174C9CD9B5B8` | Solid Documents Limited | Platform Abstraction Layer (filesystem, memori, platform interop). | **UNKNOWN** |
-| `dbCore.dll` | 139.800 | x64 | 10.0.19910.1 | `FF085EB815525C0861070AD25177D1ED4AF42237244E0CF83D531B8D99D77693` | Solid Documents Limited | Database internal objek dokumen dan pelacak riwayat model. | **UNKNOWN** |
-| `IMAGETOOL.dll` | 1.353.752 | x64 | 10.0.19910.1 | `D51E759A512A8A2956104016849E7B8701B16402E43BDD074960B5FBBF71A97C` | Solid Documents Limited | Dekoder citra, manipulasi raster, dan ekstraksi gambar biner (TOOL-05). | **UNKNOWN** |
-| `PDFLibTool.dll` | 6.548.504 | x64 | 10.0.19910.1 | `6222B54F9F3AE3189636D35A07708BDCD7690588BE57FFA735C324EA6F1D0F4B` | Solid Documents Limited | Parser struktur biner objek PDF dan resolusi font/vektor tingkat rendah. | **UNKNOWN** |
-| `SolidLanguage.dll` | 6.681.624 | x64 | 10.0.19910.1 | `7F215B4776043FC7452CF12E32100D477BF299B97529071743A252FABB7ED49D` | Solid Documents Limited | Modul tipografi, pemenggalan kata, dan kamus multibahasa. | **UNKNOWN** |
-| `DOCXFlt.flt` | 572.952 | x64 | 10.0.19910.1 | `08B902D4A5241A108F0859903C2F764A701E35EE0AF130CDB5E6D1743F4A05F4` | Solid Documents Limited | Filter penulisan format Microsoft Word OpenXML (`.docx`) via `GetFilter`. | **UNKNOWN** |
-| `XlsxFlt.flt` | 455.192 | x64 | 10.0.19910.1 | `9916349B70ECF957DF960B81D3833FE8F3CB32B2C21A637FF7514960145E542B` | Solid Documents Limited | Filter penulisan format Microsoft Excel OpenXML (`.xlsx`) via `GetFilter`. | **UNKNOWN** |
-| `CsvFlt.flt` | 90.648 | x64 | 10.0.19910.1 | `90D480662458BE57302ABDE3B9A776E1CC10DEF4FE2E0FC18D20F42D8C850D64` | Solid Documents Limited | Filter penulisan format tabel CSV via `GetFilter`. | **UNKNOWN** |
-| `PptxFlt.flt` | 525.336 | x64 | 10.0.19910.1 | `697361375288CD93BB80CD5A7E72E2BDABFCDD7F807FD585FD5C1531819A4AF5` | Solid Documents Limited | Filter penulisan slide Microsoft PowerPoint OpenXML (`.pptx`) via `GetFilter`. | **UNKNOWN** |
-| `PdfFlt.flt` | 8.495.640 | x64 | 10.0.19910.1 | `4151A73575E8FF41E0D031B8F9866DA271927032A95B0F133D84C5F0CADCBFD1` | Solid Documents Limited | Filter dekomposisi struktur konten PDF masukan via `GetFilter`. | **UNKNOWN** |
-| `PdfMeta.dll` | 584.728 | x64 | 10.0.19910.1 | `D760F4DD16F0654DBDC4D91B5C1232FACA5F2041D93B4FD6A31ACA732EEE22C4` | Solid Documents Limited | Ekstraktor metadata XMP/DocInfo dokumen PDF. | **UNKNOWN** |
-| `SecurePdfSDK.dll` | 1.082.392 | x64 | 10.0.19910.1 | `1EBEEAE33A2CCB988A4781650A0FA604E03FA43258C262CB6705B0287C955CF7` | Solid Documents Limited | Penanganan keamanan enkripsi PDF (Standard Security Handler / password). | **UNKNOWN** |
-| `resources\commonwidths.dat` | 28.806 | N/A | N/A | `DFB768A6518A3F2F86CD1538A0EB24C6B3B3C18FDC334EB2889DF9E2C53521BE` | Solid Documents Limited | Tabel metrik lebar glif standar font. | **UNKNOWN** |
-| `resources\GenericRGBProfile.icc` | 1.320 | N/A | N/A | `EB03DB58FF1F226C83103A11F30B5520F9B68A7CED67DAA78992723E3EA0411D` | Standard ICC | Profil warna RGB standar rendering citra. | **UNKNOWN** |
-| `resources\SolidLists.pdf` | 2.997.212 | N/A | N/A | `94E418DDB812A72639A609F0A403AB064F94C8C5B2170231C5D4097239F0C0B7` | Solid Documents Limited | Data template deteksi pola list dan bullet point. | **UNKNOWN** |
-| `resources\SolidOCR.pdf` | 17.777.808 | N/A | N/A | `C46BC59CE4F0952A24DD823D7A1000712C05C1F478C34C7B3EEE69D1F4285094` | Solid Documents Limited | Data referensi karakter untuk OCR dan text recovery. | **UNKNOWN** |
-| `resources\CMap\*` (187 berkas) | 9.518.094 | N/A | N/A | Hash per berkas terverifikasi | Adobe / Solid Documents | Tabel character mapping Unicode untuk font CMap (Asia Timur & Simbol). | **UNKNOWN** |
-
-### 6.3 Status Ketentuan Lisensi & Temuan Hukum
-
-- **Teks Hak Cipta yang Ditemukan:** Seluruh biner memuat metadata sumber: `Copyright (C) 2000-2026 Solid Documents Limited. All rights reserved.`
-- **Pemeriksaan Status Runtime:** Fungsi internal `SolidFramework_License_GetType()` mengembalikan nilai `4`, dan `SolidFramework_License_FreeOk()` bernilai `1` (mode free tier / evaluasi bawaan aktif). Namun, tidak ditemukan berkas lisensi publik (misalnya MIT, Apache, atau BSD) yang mengizinkan redistribusi bebas.
-- **Ketentuan yang Belum Terverifikasi:** Syarat formal penggunaan API prosedural di luar aplikasi iLovePDF tanpa kunci lisensi komersial belum diketahui secara pasti (`UNKNOWN`).
-- **Pernyataan Kepatuhan:**
-  > Salinan berkas di atas ditempatkan semata-mata untuk eksperimen teknis pribadi (*personal research sandbox*). Fakta bahwa eksperimen bersifat pribadi **TIDAK** otomatis memberikan hak lisensi komersial atau izin redistribusi publik.
-  > Dilarang keras melakukan cracking, menghilangkan proteksi biner, mengakali mekanisme aktivasi, mengekstrak kunci lisensi terenkripsi, atau memalsukan identitas aplikasi.
+### 6.2 Arsitektur Out-of-Process CLI (`IPdfOfficeToolService`)
+Untuk menjaga stabilitas runtime dan mencegah konflik versi grafis (*SkiaSharp Decoupling*), engine konversi dipisahkan sebagai proses CLI mandiri:
+- **Aplikasi Desktop (`Nexus.App`)**: Menggunakan SkiaSharp v4.x untuk rendering UI WPF dan visualizer halaman.
+- **Converter Engine (`NexusConverterEngine`)**: Menggunakan SkiaSharp v2.88.8 yang terkalibrasi khusus untuk fidelitas font Office, OpenXML vector rendering, dan ekstraksi gambar embedded PDF.
+- **Lokasi Distribusi Portabel**: `<EngineRootFolder>\Convert from PDF\NexusConverterEngine.dll`.
+- **Perintah CLI Standar**:
+  ```powershell
+  dotnet "<EngineRoot>\Convert from PDF\NexusConverterEngine.dll" <docx|xlsx|pptx|images> <input.pdf> <output> [--single-sheet] --control-stdin
+  ```
+- **Atomic Staging & Cancellation**: Hasil konversi di-generate pada direktori *staging* terisolasi (`.nexus-convert-*`) pada volume tujuan sebelum dipindahkan (*atomic rename*) ke direktori akhir. Pembatalan dikirim secara kooperatif via stream `StandardInput` (`cancel\n`).
 
 
