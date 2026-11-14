@@ -19,11 +19,39 @@
             <TabControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal">
-                        <Grid Width="16" Height="20" VerticalAlignment="Center" Margin="0,0,8,0">
-                            <TextBlock services:NexusIcon.Glyph="{Binding WorkspaceGlyph}" FontSize="16" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource NexusAccentPrimary}"/>
-                            <TextBlock Text="{Binding WorkspaceBadge}" FontSize="7" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                       Foreground="{DynamicResource NexusAccentPrimary}" Background="{DynamicResource NexusSurfaceBase}"/>
+                        <!-- iLovePDF-style Tab Icon (Red stacked page for Reader, Conversion dual-badge, or Plum tile for Edit PDF) -->
+                        <Grid Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <!-- 1. Reader Tab Icon: Red Double-Page Outline -->
+                            <Path Data="{Binding WorkspaceIconGeometry}"
+                                  Stroke="{Binding WorkspaceAccentBrush}" StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Stretch="Uniform" Width="15" Height="16"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="{Binding IsReaderWorkspace, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                            <!-- 2. Conversion Tool Tab Icon: Mini Top-Left Page + Bottom-Right Colored Badge -->
+                            <Grid Visibility="{Binding IsConversionToolWorkspace, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Path Data="M 2,1 H 9 L 12,4 V 12 H 2 Z M 9,1 V 4 H 12"
+                                      Stroke="{Binding WorkspaceAccentBrush}" StrokeThickness="1.4"
+                                      StrokeLineJoin="Round" Width="11" Height="12" Stretch="Uniform"
+                                      HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,1,0,0"/>
+                                <Border CornerRadius="2.5" Padding="2.5,0.5" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        Background="{Binding WorkspaceAccentBrush}">
+                                    <TextBlock Text="{Binding WorkspaceBadge}" FontSize="6.5" FontWeight="ExtraBold"
+                                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+
+                            <!-- 3. Edit PDF Tool Tab Icon: Plum Rounded Square + White Vector Icon -->
+                            <Border Width="18" Height="18" CornerRadius="4" Background="{Binding WorkspaceAccentBrush}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Visibility="{Binding IsEditToolWorkspace, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Path Data="{Binding WorkspaceIconGeometry}"
+                                      Stroke="White" StrokeThickness="1.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stretch="Uniform" Width="11" Height="11"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                         </Grid>
                         <TextBlock Text="{Binding WorkspaceTitle}" MaxWidth="180" TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" ToolTip="{Binding WorkspaceTitle}"/>

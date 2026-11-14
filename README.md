@@ -20,8 +20,8 @@ NEXUS/
 ├── AGENTS.md                  # Permanent architecture & agent guidelines
 ├── GEMINI.md                  # Behavioral & coding rules
 ├── global.json                # Pinned .NET SDK version (8.0.424)
-├── Dev_Run.cmd / .vbs         # Developer build & launch scripts
-├── Jalankan_NEXUS.cmd / .vbs  # Application launcher scripts
+├── Dev_Run.cmd                # Developer build & launch script
+├── Jalankan_NEXUS.cmd         # Application launcher script
 ├── scratch/                   # Code-pinned test fixtures (Gate I / I2-B)
 └── Nexus-CSharp/
     ├── Directory.Build.props  # MSBuild exclusions & warning rules
@@ -35,7 +35,7 @@ NEXUS/
         └── 03_App/            # WPF Desktop App (Nexus.App) & Integration Tests
 ```
 
-> **Note:** `Engine/`, `Models/`, `nexus_data/`, and all `bin/` / `obj/` build folders are intentionally excluded from Git via `.gitignore`.
+> **Note:** `Engine/`, `Models/`, `nexus_data/`, `Nexus-CSharp/docs/`, and all `bin/` / `obj/` build folders are intentionally excluded from Git via `.gitignore`.
 
 ---
 

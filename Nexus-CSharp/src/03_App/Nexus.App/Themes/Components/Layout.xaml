@@ -49,7 +49,7 @@
     <!-- Connected Desktop Tabs: Curved Shoulder Style unified with PDF Tools -->
     <Style x:Key="NexusWorkspaceTabItemStyle" TargetType="{x:Type TabItem}">
         <Setter Property="Height" Value="{DynamicResource NexusHeightNavigation}"/>
-        <Setter Property="Padding" Value="16,0"/>
+        <Setter Property="Padding" Value="12,0"/>
         <Setter Property="Margin" Value="-8,0,-8,0"/>
         <Setter Property="UseLayoutRounding" Value="True"/>
         <Setter Property="Background" Value="{DynamicResource NexusPdfTabStripBackground}"/>
@@ -79,7 +79,7 @@
                                 Background="Transparent"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="0"
-                                CornerRadius="{DynamicResource NexusRadiusMedium}"/>
+                                CornerRadius="8,8,0,0"/>
                         <Border x:Name="SelectedBottomJoin"
                                 Grid.ColumnSpan="3"
                                 Height="3"
@@ -117,6 +117,9 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="TabChrome" Property="Background" Value="{DynamicResource NexusSurfaceRaised}"/>
+                            <Setter TargetName="TabChrome" Property="BorderThickness" Value="1,1,1,0"/>
+                            <Setter TargetName="LowerShoulders" Property="Visibility" Value="Visible"/>
                             <Setter Property="Foreground" Value="{DynamicResource NexusForegroundPrimary}"/>
                             <Setter Property="Panel.ZIndex" Value="1"/>
                         </Trigger>
@@ -148,7 +151,7 @@
 
     <Style x:Key="NexusWorkspaceTabControlStyle" TargetType="{x:Type TabControl}">
         <Setter Property="Background" Value="{DynamicResource NexusPdfTabStripBackground}"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeSubtle}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource NexusStrokeDefault}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Panel.ZIndex" Value="1"/>
         <Setter Property="ItemContainerStyle" Value="{StaticResource NexusWorkspaceTabItemStyle}"/>

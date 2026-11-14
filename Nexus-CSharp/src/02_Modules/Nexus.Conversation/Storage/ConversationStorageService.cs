@@ -36,7 +36,40 @@ public class ConversationStorageService : IConversationStorageService
 
     public ConversationStorageService()
     {
-        _rootPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nexus_data", "conversations");
+        string baseDirConv = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nexus_data", "conversations");
+        bool isRealAppHost = AppDomain.CurrentDomain.BaseDirectory.Contains("Nexus.App", StringComparison.OrdinalIgnoreCase);
+        if (isRealAppHost && Directory.Exists(@"D:\NEXUS"))
+        {
+            string persistentConv = @"D:\NEXUS\nexus_data\conversations";
+            try
+            {
+                Directory.CreateDirectory(persistentConv);
+                Directory.CreateDirectory(baseDirConv);
+                // Two-way non-destructive migration so conversations in bin\Debug or D:\NEXUS\nexus_data are never lost
+                foreach (var srcFile in Directory.GetFiles(baseDirConv, "*.json"))
+                {
+                    string dstFile = Path.Combine(persistentConv, Path.GetFileName(srcFile));
+                    if (!File.Exists(dstFile) || File.GetLastWriteTimeUtc(srcFile) > File.GetLastWriteTimeUtc(dstFile))
+                    {
+                        File.Copy(srcFile, dstFile, overwrite: true);
+                    }
+                }
+                foreach (var srcFile in Directory.GetFiles(persistentConv, "*.json"))
+                {
+                    string dstFile = Path.Combine(baseDirConv, Path.GetFileName(srcFile));
+                    if (!File.Exists(dstFile) || File.GetLastWriteTimeUtc(srcFile) > File.GetLastWriteTimeUtc(dstFile))
+                    {
+                        File.Copy(srcFile, dstFile, overwrite: true);
+                    }
+                }
+            }
+            catch { }
+            _rootPath = persistentConv;
+        }
+        else
+        {
+            _rootPath = baseDirConv;
+        }
     }
 
     public int CachedConversationCount

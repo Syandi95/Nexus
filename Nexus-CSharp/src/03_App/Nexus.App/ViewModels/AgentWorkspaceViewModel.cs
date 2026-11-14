@@ -177,11 +177,13 @@ public sealed class AgentWorkspaceViewModel : ViewModelBase
     public async Task<string> NavigateBrowserFromAgentAsync(string url)
     {
         IsOpen = true;
-        LastBrowserUrl = url;
         if (BrowserNavigateRequested is not null)
         {
+            // P0-2 Honest URL: do NOT optimistically overwrite LastBrowserUrl before navigation completes;
+            // let NavigationCompleted (_pendingNavigationTcs) and actual DOM [PAGE_URL] set the verified URL.
             return await BrowserNavigateRequested.Invoke(url);
         }
+        LastBrowserUrl = url;
         return url;
     }
 

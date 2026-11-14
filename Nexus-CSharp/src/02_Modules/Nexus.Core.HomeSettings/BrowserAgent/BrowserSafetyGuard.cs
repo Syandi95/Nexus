@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,30 +30,53 @@ public static class BrowserSafetyGuard
             return (false, $"Protokol '{uri.Scheme}:' diblokir oleh BrowserSafetyGuard.");
         }
 
-        string host = uri.DnsSafeHost.ToLowerInvariant();
-        if (host is "localhost" or "0.0.0.0" || host.EndsWith(".local", StringComparison.Ordinal))
-            return (false, $"Akses ke host lokal '{host}' diblokir (SSRF Protection).");
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+            return (false, "URL dengan user:password@ diblokir.");
+
+        string host = uri.DnsSafeHost.Trim('[', ']').TrimEnd('.').ToLowerInvariant();
+        if (host.Length == 0)
+            return (false, "Host kosong.");
+
+        if (host == "localhost" || host == "0.0.0.0" ||
+            host.EndsWith(".localhost", StringComparison.Ordinal) ||
+            host.EndsWith(".local", StringComparison.Ordinal) ||
+            host.EndsWith(".internal", StringComparison.Ordinal) ||
+            host.EndsWith(".lan", StringComparison.Ordinal) ||
+            host.EndsWith(".home.arpa", StringComparison.Ordinal) ||
+            host.EndsWith(".intranet", StringComparison.Ordinal))
+            return (false, $"Akses ke host lokal/internal '{host}' diblokir (SSRF Protection).");
 
         if (IPAddress.TryParse(host, out var ip))
         {
-            if (IPAddress.IsLoopback(ip))
-                return (false, $"Akses ke loopback IP '{ip}' diblokir (SSRF Protection).");
-
-            byte[] bytes = ip.GetAddressBytes();
-            if (bytes.Length == 4)
-            {
-                if (bytes[0] == 10 ||
-                    bytes[0] == 127 ||
-                    (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-                    (bytes[0] == 192 && bytes[1] == 168) ||
-                    (bytes[0] == 169 && bytes[1] == 254))
-                {
-                    return (false, $"Akses ke IP privat '{ip}' diblokir (SSRF Protection).");
-                }
-            }
+            if (IsPrivateOrReservedAddress(ip))
+                return (false, $"Akses ke IP privat/khusus '{ip}' diblokir (SSRF Protection).");
+        }
+        else if (!host.Contains('.'))
+        {
+            return (false, $"Host tanpa domain '{host}' diblokir (nama intranet).");
         }
 
+        // CATATAN: hostname publik yang di-resolve DNS ke IP privat (DNS rebinding) belum dicek di sini;
+        // perlu pengecekan pada lapisan jaringan/proxy.
         return (true, "OK");
+    }
+
+    internal static bool IsPrivateOrReservedAddress(IPAddress ip)
+    {
+        if (ip.IsIPv4MappedToIPv6)
+            ip = ip.MapToIPv4();
+        if (IPAddress.IsLoopback(ip))
+            return true;
+        byte[] b = ip.GetAddressBytes();
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6UniqueLocal || ip.IsIPv6Multicast || ip.Equals(IPAddress.IPv6Any);
+        return b[0] == 0 || b[0] == 10 || b[0] == 127 || b[0] >= 224
+            || (b[0] == 100 && b[1] >= 64 && b[1] <= 127)
+            || (b[0] == 169 && b[1] == 254)
+            || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+            || (b[0] == 192 && b[1] == 168)
+            || (b[0] == 192 && b[1] == 0 && b[2] == 0)
+            || (b[0] == 198 && (b[1] == 18 || b[1] == 19));
     }
 
     public static (BrowserRiskLevel Risk, string Reason) EvaluateElementAction(

@@ -42,11 +42,16 @@ public sealed class PdfOfficeToolService(Func<string> engineDll) : IPdfOfficeToo
         {
             string staged = Path.Combine(work, format == "images" ? "images" : "output." + format);
             string dotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "dotnet.exe");
-            var start = new ProcessStartInfo(File.Exists(dotnet) ? dotnet : "dotnet")
+            bool hasProgramFilesDotnet = File.Exists(dotnet);
+            var start = new ProcessStartInfo(hasProgramFilesDotnet ? dotnet : "dotnet")
             {
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
             };
+            if (hasProgramFilesDotnet && Path.GetDirectoryName(dotnet) is { Length: > 0 } hostRoot)
+            {
+                start.Environment["DOTNET_ROOT"] = hostRoot;
+            }
             foreach (var argument in new[] { executable, format, Path.GetFullPath(inputPdf), staged, "--control-stdin" })
                 start.ArgumentList.Add(argument);
             if (format == "xlsx" && !multipleSheets) start.ArgumentList.Add("--single-sheet");

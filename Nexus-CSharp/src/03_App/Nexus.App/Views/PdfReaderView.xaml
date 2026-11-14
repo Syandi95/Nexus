@@ -3,6 +3,7 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:vm="clr-namespace:Nexus.App.ViewModels"
  xmlns:views="clr-namespace:Nexus.App.Views"
+ xmlns:services="clr-namespace:Nexus.App.Services"
  IsVisibleChanged="Reader_IsVisibleChanged" Loaded="Reader_Loaded" Unloaded="Reader_Unloaded" DataContextChanged="Reader_DataContextChanged" PreviewKeyDown="Reader_PreviewKeyDown">
  <UserControl.Resources>
   <Style TargetType="Button" BasedOn="{StaticResource NexusButtonStyle}"><Setter Property="MinWidth" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="8,0"/><Setter Property="Margin" Value="2,0,2,4"/></Style>
@@ -14,44 +15,566 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}"><Viewbox><Path Width="24" Height="24" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.4" Stretch="Uniform" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" UseLayoutRounding="True" SnapsToDevicePixels="True" Data="M8,13 L8,5 C8,3 11,3 11,5 L11,11 L11,3 C11,1 14,1 14,3 L14,11 L14,5 C14,3 17,3 17,5 L17,12 L17,8 C17,6 20,6 20,8 L20,15 C20,20 17,22 13,22 C10,22 8,21 6,18 L3,14 C1,12 3,10 5,12 L8,15"/></Viewbox></Border></ControlTemplate></Setter.Value></Setter>
    <Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="{DynamicResource NexusAccentPrimary}"/><Setter Property="Foreground" Value="{DynamicResource NexusForegroundOnAccent}"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter Property="BorderBrush" Value="{DynamicResource NexusAccentPrimary}"/></Trigger></Style.Triggers>
   </Style>
+  <Style x:Key="ReaderSidebarFlatButtonStyle" TargetType="Button">
+   <Setter Property="Background" Value="Transparent"/>
+   <Setter Property="BorderThickness" Value="0"/>
+   <Setter Property="Padding" Value="0"/>
+   <Setter Property="Margin" Value="0"/>
+   <Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
+   <Setter Property="Template">
+    <Setter.Value>
+     <ControlTemplate TargetType="Button">
+      <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+       <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+     </ControlTemplate>
+    </Setter.Value>
+   </Setter>
+  </Style>
  </UserControl.Resources>
  <Grid>
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
   <WrapPanel x:Name="ReaderToolbar" Margin="0,0,0,8">
-   <ComboBox Width="180" Margin="0,0,6,4" ItemsSource="{Binding Sources}" SelectedItem="{Binding ActiveDocument,Mode=OneWay}" SelectionChanged="Document_SelectionChanged" ToolTip="Dokumen aktif"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate><ComboBox.ItemContainerStyle><Style TargetType="ComboBoxItem" BasedOn="{StaticResource NexusComboBoxItemStyle}"><Setter Property="IsEnabled" Value="{Binding IsReady}"/><Setter Property="ToolTip" Value="{Binding ImportError}"/></Style></ComboBox.ItemContainerStyle></ComboBox>
-   <Button Content="‹" Command="{Binding PreviousPageCommand}" ToolTip="Halaman sebelumnya"/>
+   <Button x:Name="PdfPrintButton" Command="{Binding OpenPrintDialogCommand}" ToolTip="Cetak dokumen PDF (Ctrl+P)" AutomationProperties.Name="Print PDF">
+    <TextBlock services:NexusIcon.Glyph="Print" FontSize="15" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+   </Button>
+   <TextBlock Text="{Binding DocumentName}" Visibility="Collapsed"/>
+   <ComboBox Width="160" Margin="4,0,4,4" ItemsSource="{Binding Sources}" SelectedItem="{Binding ActiveDocument,Mode=OneWay}" SelectionChanged="Document_SelectionChanged" ToolTip="Dokumen aktif" Visibility="{Binding DataContext.HasMultipleFiles,RelativeSource={RelativeSource AncestorType={x:Type views:PdfUtilitiesView}},Converter={StaticResource BooleanToVisibilityConverter}}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate><ComboBox.ItemContainerStyle><Style TargetType="ComboBoxItem" BasedOn="{StaticResource NexusComboBoxItemStyle}"><Setter Property="IsEnabled" Value="{Binding IsReady}"/><Setter Property="ToolTip" Value="{Binding ImportError}"/></Style></ComboBox.ItemContainerStyle></ComboBox>
+   <Border Width="1" Height="20" Background="{DynamicResource NexusContentBorder}" Margin="6,0,6,4" VerticalAlignment="Center"/>
+   <Button Command="{Binding PreviousPageCommand}" ToolTip="Halaman sebelumnya"><TextBlock services:NexusIcon.Glyph="ChevronUp" FontSize="13" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
    <TextBox Width="42" Text="{Binding PageNumber,UpdateSourceTrigger=LostFocus}" ToolTip="Nomor halaman"/>
-   <TextBlock Text="{Binding PageCount,StringFormat=' / {0}'}" VerticalAlignment="Center" Margin="4,0"/>
-   <Button Content="›" Command="{Binding NextPageCommand}" ToolTip="Halaman berikutnya"/>
-   <Button Content="−" Command="{Binding ZoomOutCommand}" ToolTip="Perkecil"/>
+   <TextBlock Text="{Binding PageCount,StringFormat=' / {0}'}" VerticalAlignment="Center" Margin="4,0,4,4"/>
+   <Button Command="{Binding NextPageCommand}" ToolTip="Halaman berikutnya"><TextBlock services:NexusIcon.Glyph="ChevronDown" FontSize="13" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
+   <Border Width="1" Height="20" Background="{DynamicResource NexusContentBorder}" Margin="6,0,6,4" VerticalAlignment="Center"/>
+   <Button Command="{Binding ZoomOutCommand}" ToolTip="Perkecil"><TextBlock services:NexusIcon.Glyph="ZoomOut" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
    <TextBox Width="62" Text="{Binding ZoomText,UpdateSourceTrigger=LostFocus}" ToolTip="Zoom 10–1000%"/>
-   <Button Content="+" Command="{Binding ZoomInCommand}" ToolTip="Perbesar"/>
-   <ComboBox Width="118" Margin="6,0" SelectedValue="{Binding FitMode}" SelectedValuePath="Tag">
+   <Button Command="{Binding ZoomInCommand}" ToolTip="Perbesar"><TextBlock services:NexusIcon.Glyph="ZoomIn" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
+   <Border Width="1" Height="20" Background="{DynamicResource NexusContentBorder}" Margin="6,0,6,4" VerticalAlignment="Center"/>
+   <ComboBox Width="122" Margin="2,0,2,4" SelectedValue="{Binding FitMode}" SelectedValuePath="Tag">
     <ComboBoxItem Content="Fit page" Tag="{x:Static vm:PdfReaderFitMode.FitPage}"/>
     <ComboBoxItem Content="Fit width" Tag="{x:Static vm:PdfReaderFitMode.FitWidth}"/>
     <ComboBoxItem Content="Custom size" Tag="{x:Static vm:PdfReaderFitMode.Custom}"/>
    </ComboBox>
-   <Button Content="↶" Click="RotateLeft_Click" ToolTip="Putar tampilan ke kiri; sumber tetap"/>
-   <Button Content="↷" Click="RotateRight_Click" ToolTip="Putar tampilan ke kanan; sumber tetap"/>
+   <Border Width="1" Height="20" Background="{DynamicResource NexusContentBorder}" Margin="6,0,6,4" VerticalAlignment="Center"/>
+   <Button Click="RotateLeft_Click" ToolTip="Putar tampilan ke kiri; sumber tetap"><TextBlock services:NexusIcon.Glyph="RotateLeft" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
+   <Button Click="RotateRight_Click" ToolTip="Putar tampilan ke kanan; sumber tetap"><TextBlock services:NexusIcon.Glyph="RotateRight" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/></Button>
    <ToggleButton x:Name="PdfHandToggle" IsChecked="{Binding IsHandMode}" Style="{StaticResource ReaderHandToggleStyle}" ToolTip="Geser halaman" AutomationProperties.Name="Geser halaman"/>
-   <Button Content="Daftar file" Margin="6,0" Click="ShowCards_Click" Visibility="{Binding DataContext.HasMultipleFiles,RelativeSource={RelativeSource AncestorType={x:Type views:PdfUtilitiesView}},Converter={StaticResource BooleanToVisibilityConverter}}"/>
+   <Button Content="Daftar file" Margin="6,0,2,4" Click="ShowCards_Click" Visibility="{Binding DataContext.HasMultipleFiles,RelativeSource={RelativeSource AncestorType={x:Type views:PdfUtilitiesView}},Converter={StaticResource BooleanToVisibilityConverter}}"/>
   </WrapPanel>
-  <ListBox x:Name="PageList" Grid.Row="1" ItemsSource="{Binding Pages}" Background="{DynamicResource NexusPdfTabStripBackground}" BorderThickness="0"
-   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True"
-   VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0"
-   ScrollViewer.ScrollChanged="Pages_ScrollChanged" SizeChanged="Pages_SizeChanged" PreviewMouseWheel="Pages_MouseWheel" PreviewKeyDown="Pages_KeyDown" PreviewMouseLeftButtonDown="Pages_MouseDown" PreviewMouseMove="Pages_MouseMove" PreviewMouseLeftButtonUp="Pages_MouseUp" LostMouseCapture="Pages_LostMouseCapture">
-   <ListBox.Style><Style TargetType="ListBox"><Setter Property="Cursor" Value="Arrow"/><Style.Triggers><DataTrigger Binding="{Binding IsHandMode}" Value="True"><Setter Property="Cursor" Value="Hand"/></DataTrigger></Style.Triggers></Style></ListBox.Style>
-   <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
-   <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Focusable" Value="False"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
-   <ListBox.ItemTemplate><DataTemplate>
-    <Border Width="{Binding Width}" Height="{Binding Height}" Margin="16,8" Background="White" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" AutomationProperties.Name="{Binding Label}">
-     <Grid ClipToBounds="True">
-      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12"/>
-      <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"><Image.LayoutTransform><RotateTransform Angle="{Binding Rotation}"/></Image.LayoutTransform></Image>
+
+  <!-- Row 1: Left Collapsible Reader Sidebar (Rail + Drawer) + Main PDF Viewport -->
+  <Grid Grid.Row="1">
+   <Grid.ColumnDefinitions>
+    <ColumnDefinition Width="44"/>
+    <ColumnDefinition Width="Auto"/>
+    <ColumnDefinition Width="*"/>
+   </Grid.ColumnDefinitions>
+
+   <!-- Column 0: Left Vertical Icon Rail (image_11b63e.png) -->
+   <Border x:Name="PdfLeftSidebarRail" Grid.Column="0" Background="{DynamicResource NexusPdfTabStripBackground}" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="0,0,1,0">
+    <StackPanel HorizontalAlignment="Center" Margin="0,10,0,0">
+     <!-- Expand / Collapse Toggle Button -->
+     <Button x:Name="PdfSidebarToggleButton" Width="30" Height="30" Margin="0,0,0,12"
+             Style="{StaticResource ReaderSidebarFlatButtonStyle}"
+             Background="{DynamicResource NexusSurfaceBase}"
+             BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1"
+             Command="{Binding ToggleLeftSidebarCommand}" ToolTip="Buka / tutup panel samping kiri">
+      <TextBlock FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center">
+       <TextBlock.Style>
+        <Style TargetType="TextBlock">
+         <Setter Property="services:NexusIcon.Glyph" Value="ChevronRight"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding IsLeftSidebarExpanded}" Value="True">
+           <Setter Property="services:NexusIcon.Glyph" Value="ChevronLeft"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </TextBlock.Style>
+      </TextBlock>
+     </Button>
+
+     <!-- Tab 0: Page Thumbnails -->
+     <Button x:Name="PdfSidebarThumbnailsTabButton" Width="34" Height="34" Margin="0,0,0,8"
+             Command="{Binding SelectSidebarTabCommand}" CommandParameter="Thumbnails" ToolTip="Page thumbnails">
+      <Button.Style>
+       <Style TargetType="Button" BasedOn="{StaticResource ReaderSidebarFlatButtonStyle}">
+        <Style.Triggers>
+         <DataTrigger Binding="{Binding IsThumbnailsTabActive}" Value="True">
+          <Setter Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
+          <Setter Property="BorderBrush" Value="{DynamicResource NexusContentBorder}"/>
+          <Setter Property="BorderThickness" Value="1"/>
+         </DataTrigger>
+        </Style.Triggers>
+       </Style>
+      </Button.Style>
+      <Path Data="M 7,3 H 14 L 18,7 V 17 H 7 Z M 14,3 V 7 H 18 M 4,7 V 20 H 15"
+            Width="16" Height="16" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+       <Path.Style>
+        <Style TargetType="Path">
+         <Setter Property="Stroke" Value="{DynamicResource NexusForegroundSecondary}"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding IsThumbnailsTabActive}" Value="True">
+           <Setter Property="Stroke" Value="{x:Static vm:PdfToolDefinition.PdfReaderRedBrush}"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Path.Style>
+      </Path>
+     </Button>
+
+     <!-- Tab 1: Attachments -->
+     <Button x:Name="PdfSidebarAttachmentsTabButton" Width="34" Height="34" Margin="0,0,0,8"
+             Command="{Binding SelectSidebarTabCommand}" CommandParameter="Attachments" ToolTip="Attachments">
+      <Button.Style>
+       <Style TargetType="Button" BasedOn="{StaticResource ReaderSidebarFlatButtonStyle}">
+        <Style.Triggers>
+         <DataTrigger Binding="{Binding IsAttachmentsTabActive}" Value="True">
+          <Setter Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
+          <Setter Property="BorderBrush" Value="{DynamicResource NexusContentBorder}"/>
+          <Setter Property="BorderThickness" Value="1"/>
+         </DataTrigger>
+        </Style.Triggers>
+       </Style>
+      </Button.Style>
+      <Path Data="M 16.5,6 V 17.5 A 4,4 0 0 1 8.5,17.5 V 5 A 2.5,2.5 0 0 1 13.5,5 V 15.5 A 1,1 0 0 1 11.5,15.5 V 6"
+            Width="16" Height="16" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+       <Path.Style>
+        <Style TargetType="Path">
+         <Setter Property="Stroke" Value="{DynamicResource NexusForegroundSecondary}"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding IsAttachmentsTabActive}" Value="True">
+           <Setter Property="Stroke" Value="{x:Static vm:PdfToolDefinition.PdfReaderRedBrush}"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Path.Style>
+      </Path>
+     </Button>
+
+     <!-- Tab 2: Document Information -->
+     <Button x:Name="PdfSidebarInfoTabButton" Width="34" Height="34" Margin="0,0,0,8"
+             Command="{Binding SelectSidebarTabCommand}" CommandParameter="Information" ToolTip="Information">
+      <Button.Style>
+       <Style TargetType="Button" BasedOn="{StaticResource ReaderSidebarFlatButtonStyle}">
+        <Style.Triggers>
+         <DataTrigger Binding="{Binding IsInfoTabActive}" Value="True">
+          <Setter Property="Background" Value="{DynamicResource NexusSurfaceBase}"/>
+          <Setter Property="BorderBrush" Value="{DynamicResource NexusContentBorder}"/>
+          <Setter Property="BorderThickness" Value="1"/>
+         </DataTrigger>
+        </Style.Triggers>
+       </Style>
+      </Button.Style>
+      <Path Data="M 12,3 A 9,9 0 1 0 21,12 A 9,9 0 0 0 12,3 Z M 12,10.5 V 16 M 12,7.3 V 8.2"
+            Width="16" Height="16" Stretch="Uniform" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+       <Path.Style>
+        <Style TargetType="Path">
+         <Setter Property="Stroke" Value="{DynamicResource NexusForegroundSecondary}"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding IsInfoTabActive}" Value="True">
+           <Setter Property="Stroke" Value="{x:Static vm:PdfToolDefinition.PdfReaderRedBrush}"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Path.Style>
+      </Path>
+     </Button>
+    </StackPanel>
+   </Border>
+
+   <!-- Column 1: Expandable Left Sidebar Drawer (Page thumbnails / Attachments / Information) -->
+   <Border x:Name="PdfLeftSidebarDrawer" Grid.Column="1" Width="204"
+           Background="{DynamicResource NexusSurfaceBase}" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="0,0,1,0"
+           Visibility="{Binding IsLeftSidebarExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+    <Grid>
+     <!-- Pane 0: Page Thumbnails (Exact iLovePDF aspect-ratio fit + hover zoom & blue outline) -->
+     <Grid x:Name="PdfThumbnailsSidebarPane" Visibility="{Binding IsThumbnailsTabExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+      <Grid.RowDefinitions>
+       <RowDefinition Height="44"/>
+       <RowDefinition Height="1"/>
+       <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <TextBlock Grid.Row="0" Text="Page thumbnails" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Border Grid.Row="1" Background="{DynamicResource NexusContentBorder}" Margin="10,0"/>
+      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,10,0,14">
+       <ItemsControl x:Name="PdfThumbnailSidebarList" ItemsSource="{Binding Pages}">
+        <ItemsControl.ItemTemplate>
+         <DataTemplate>
+          <Button x:Name="ThumbnailItemButton" Style="{StaticResource ReaderSidebarFlatButtonStyle}"
+                  Command="{Binding DataContext.SelectThumbnailPageCommand, RelativeSource={RelativeSource AncestorType={x:Type views:PdfReaderView}}}"
+                  CommandParameter="{Binding PageNumber}"
+                  Padding="8,10,8,12" HorizontalAlignment="Center">
+           <StackPanel HorizontalAlignment="Center">
+            <Border x:Name="ThumbnailPageBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="Transparent" Padding="0" RenderTransformOrigin="0.5,0.5"
+                    SnapsToDevicePixels="True" UseLayoutRounding="True">
+             <Border.Style>
+              <Style TargetType="Border">
+               <Setter Property="BorderBrush" Value="Transparent"/>
+               <Setter Property="BorderThickness" Value="0"/>
+               <Setter Property="RenderTransform">
+                <Setter.Value>
+                 <ScaleTransform ScaleX="1.0" ScaleY="1.0"/>
+                </Setter.Value>
+               </Setter>
+               <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, ElementName=ThumbnailItemButton}" Value="True">
+                 <Setter Property="BorderBrush" Value="{DynamicResource NexusAccentPrimary}"/>
+                 <Setter Property="BorderThickness" Value="1.5"/>
+                 <Setter Property="RenderTransform">
+                  <Setter.Value>
+                   <ScaleTransform ScaleX="1.07" ScaleY="1.07"/>
+                  </Setter.Value>
+                 </Setter>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCurrentPage}" Value="True">
+                 <Setter Property="BorderBrush" Value="{DynamicResource NexusAccentPrimary}"/>
+                 <Setter Property="BorderThickness" Value="2"/>
+                </DataTrigger>
+               </Style.Triggers>
+              </Style>
+             </Border.Style>
+             <Border.Effect>
+              <DropShadowEffect BlurRadius="9" ShadowDepth="1.5" Direction="270" Opacity="0.22"/>
+             </Border.Effect>
+             <Image Source="{Binding Thumbnail}" MaxWidth="98" MaxHeight="128" Stretch="Uniform"
+                    RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" UseLayoutRounding="True">
+              <Image.LayoutTransform>
+               <RotateTransform Angle="{Binding Rotation}"/>
+              </Image.LayoutTransform>
+             </Image>
+            </Border>
+            <TextBlock Text="{Binding PageNumber}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+           </StackPanel>
+          </Button>
+         </DataTemplate>
+        </ItemsControl.ItemTemplate>
+       </ItemsControl>
+      </ScrollViewer>
      </Grid>
-    </Border>
-   </DataTemplate></ListBox.ItemTemplate>
-  </ListBox>
-  <TextBlock Grid.Row="1" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+
+     <!-- Pane 1: Attachments (image_11b33b.png) -->
+     <Grid x:Name="PdfAttachmentsSidebarPane" Visibility="{Binding IsAttachmentsTabExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+      <Grid.RowDefinitions>
+       <RowDefinition Height="44"/>
+       <RowDefinition Height="1"/>
+       <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <TextBlock Grid.Row="0" Text="Attachments" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Border Grid.Row="1" Background="{DynamicResource NexusContentBorder}" Margin="10,0"/>
+      <Grid Grid.Row="2" Margin="14,12">
+       <TextBlock Text="Tidak ada file lampiran" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0"
+                  Visibility="{Binding HasNoAttachments, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Attachments}">
+         <ItemsControl.ItemTemplate>
+          <DataTemplate>
+           <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="0,0,0,1" Padding="4,8">
+            <DockPanel LastChildFill="True">
+             <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}" FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+             <TextBlock Text="{Binding FileName}" FontSize="12" Foreground="{DynamicResource NexusForegroundPrimary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+            </DockPanel>
+           </Border>
+          </DataTemplate>
+         </ItemsControl.ItemTemplate>
+        </ItemsControl>
+       </ScrollViewer>
+      </Grid>
+     </Grid>
+
+     <!-- Pane 2: Document Information (image_11b35b.png) -->
+     <Grid x:Name="PdfInfoSidebarPane" Visibility="{Binding IsInfoTabExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+      <Grid.RowDefinitions>
+       <RowDefinition Height="44"/>
+       <RowDefinition Height="1"/>
+       <RowDefinition Height="*"/>
+       <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <TextBlock Grid.Row="0" Text="Information" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Border Grid.Row="1" Background="{DynamicResource NexusContentBorder}" Margin="10,0"/>
+      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="14,12,14,8">
+       <StackPanel>
+        <TextBlock Text="File type:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoFileType}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,10"/>
+
+        <TextBlock Text="PDF version:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoVersion}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,10"/>
+
+        <TextBlock Text="File size:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoFileSize}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Pages:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding PageCount}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Creation date:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoCreationDate}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Date modified:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoModifiedDate}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Author:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoAuthor}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Creator:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoCreator}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Producer:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoProducer}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Title:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoTitle}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Subject:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoSubject}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <TextBlock Text="Keywords:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,2"/>
+        <TextBlock Text="{Binding DocInfoKeywords}" FontSize="12" Foreground="{DynamicResource NexusForegroundSecondary}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+       </StackPanel>
+      </ScrollViewer>
+
+      <!-- Bottom PDF/A Compliance Badge Card (image_11b35b.png) -->
+      <Border x:Name="PdfAComplianceBadgeCard" Grid.Row="3" Margin="10,6,10,10" Padding="10,10" CornerRadius="8"
+              Background="{Binding PdfABadgeBackgroundBrush}">
+       <Grid>
+        <Grid.ColumnDefinitions>
+         <ColumnDefinition Width="Auto"/>
+         <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Width="26" Height="26" CornerRadius="13" Background="{Binding PdfABadgeIconBrush}" VerticalAlignment="Center" Margin="0,0,10,0">
+         <TextBlock Text="/A" FontSize="10" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Grid.Column="1" Text="{Binding PdfAComplianceText}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+       </Grid>
+      </Border>
+     </Grid>
+    </Grid>
+   </Border>
+
+   <!-- Column 2: Main PDF Viewport -->
+   <ListBox x:Name="PageList" Grid.Column="2" ItemsSource="{Binding Pages}" Background="{DynamicResource NexusPdfTabStripBackground}" BorderThickness="0"
+    ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True"
+    VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1,1" VirtualizingPanel.CacheLengthUnit="Item"
+    ScrollViewer.ScrollChanged="Pages_ScrollChanged" SizeChanged="Pages_SizeChanged" PreviewMouseWheel="Pages_MouseWheel" PreviewKeyDown="Pages_KeyDown" PreviewMouseLeftButtonDown="Pages_MouseDown" PreviewMouseMove="Pages_MouseMove" PreviewMouseLeftButtonUp="Pages_MouseUp" LostMouseCapture="Pages_LostMouseCapture">
+    <ListBox.Style><Style TargetType="ListBox"><Setter Property="Cursor" Value="Arrow"/><Style.Triggers><DataTrigger Binding="{Binding IsHandMode}" Value="True"><Setter Property="Cursor" Value="Hand"/></DataTrigger></Style.Triggers></Style></ListBox.Style>
+    <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Focusable" Value="False"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+    <ListBox.ItemTemplate><DataTemplate>
+     <Border Width="{Binding Width}" Height="{Binding Height}" Margin="18,10" Background="White" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" SnapsToDevicePixels="True" UseLayoutRounding="True" AutomationProperties.Name="{Binding Label}">
+      <Border.Effect>
+       <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.14"/>
+      </Border.Effect>
+      <Grid ClipToBounds="True">
+       <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12"/>
+       <Image Source="{Binding Image}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True" UseLayoutRounding="True"><Image.LayoutTransform><RotateTransform Angle="{Binding Rotation}"/></Image.LayoutTransform></Image>
+      </Grid>
+     </Border>
+    </DataTemplate></ListBox.ItemTemplate>
+   </ListBox>
+   <TextBlock Grid.Column="2" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+  </Grid>
+
+  <!-- iLovePDF-Parity Functional Print Modal Dialog (image_11af1b.jpg) -->
+  <Grid x:Name="PdfPrintModalOverlay" Grid.Row="0" Grid.RowSpan="2" Panel.ZIndex="90"
+        Visibility="{Binding IsPrintDialogOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+   <Border Background="{DynamicResource NexusModalBackdrop}" MouseLeftButtonDown="PrintBackdrop_MouseDown"/>
+   <Border Width="680" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center"
+           Background="{DynamicResource NexusSurfaceBase}" BorderBrush="{DynamicResource NexusContentBorder}"
+           BorderThickness="1" CornerRadius="12" Padding="20,16,20,18" SnapsToDevicePixels="True" UseLayoutRounding="True">
+    <Border.Effect>
+     <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.22"/>
+    </Border.Effect>
+    <Grid>
+     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+     </Grid.RowDefinitions>
+
+     <!-- Modal Title Bar -->
+     <DockPanel Grid.Row="0" Margin="0,0,0,12">
+      <Button DockPanel.Dock="Right" Width="28" Height="28" Padding="0" Margin="0"
+              Style="{StaticResource NexusToolbarButtonStyle}" Command="{Binding ClosePrintDialogCommand}" ToolTip="Tutup">
+       <TextBlock services:NexusIcon.Glyph="Close" FontSize="12"/>
+      </Button>
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+       <TextBlock services:NexusIcon.Glyph="Print" FontSize="15" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+       <TextBlock Text="Print" FontSize="14.5" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" VerticalAlignment="Center"/>
+      </StackPanel>
+     </DockPanel>
+
+     <!-- Modal Body -->
+     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+       <!-- 1. General Box -->
+       <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+        <StackPanel>
+         <TextBlock Text="General" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,8"/>
+         <Grid>
+          <Grid.ColumnDefinitions>
+           <ColumnDefinition Width="Auto"/>
+           <ColumnDefinition Width="1.5*"/>
+           <ColumnDefinition Width="Auto"/>
+           <ColumnDefinition Width="0.8*"/>
+           <ColumnDefinition Width="Auto"/>
+           <ColumnDefinition Width="1.2*"/>
+           <ColumnDefinition Width="Auto"/>
+           <ColumnDefinition Width="64"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="Printer:" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+          <ComboBox Grid.Column="1" ItemsSource="{Binding InstalledPrinters}" SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}" Height="28" Margin="0,0,10,0"/>
+          <TextBlock Grid.Column="2" Text="Tray:" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+          <ComboBox Grid.Column="3" ItemsSource="{Binding PrintTrays}" SelectedItem="{Binding SelectedPrintTray, Mode=TwoWay}" Height="28" Margin="0,0,10,0"/>
+          <TextBlock Grid.Column="4" Text="Paper size:" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+          <ComboBox Grid.Column="5" ItemsSource="{Binding PrintPaperSizes}" SelectedIndex="{Binding SelectedPaperSizeIndex, Mode=TwoWay}" Height="28" Margin="0,0,10,0"/>
+          <TextBlock Grid.Column="6" Text="Copies:" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+          <TextBox Grid.Column="7" Text="{Binding PrintCopies, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="0"/>
+         </Grid>
+        </StackPanel>
+       </Border>
+
+       <!-- 2. Two-Column Layout: Left (Preview + Page Disposition) | Right (Print Pages + Color & Quality + Duplex) -->
+       <Grid>
+        <Grid.ColumnDefinitions>
+         <ColumnDefinition Width="*"/>
+         <ColumnDefinition Width="12"/>
+         <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Column -->
+        <StackPanel Grid.Column="0">
+         <!-- Preview Card -->
+         <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+          <StackPanel>
+           <TextBlock Text="Preview" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,8"/>
+           <Grid Height="176">
+            <Grid.ColumnDefinitions>
+             <ColumnDefinition Width="32"/>
+             <ColumnDefinition Width="*"/>
+             <ColumnDefinition Width="32"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Width="26" Height="26" Padding="0" VerticalAlignment="Center" Command="{Binding PreviousPrintPreviewPageCommand}">
+             <TextBlock services:NexusIcon.Glyph="ChevronLeft" FontSize="11"/>
+            </Button>
+            <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Background="White" Padding="2" BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1">
+             <Border.Effect>
+              <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.18"/>
+             </Border.Effect>
+             <Image Source="{Binding PrintPreviewImage}" Stretch="Uniform" MaxHeight="164" RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
+            <Button Grid.Column="2" Width="26" Height="26" Padding="0" VerticalAlignment="Center" Command="{Binding NextPrintPreviewPageCommand}">
+             <TextBlock services:NexusIcon.Glyph="ChevronRight" FontSize="11"/>
+            </Button>
+           </Grid>
+           <DockPanel Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+             <TextBlock Text="Page" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+             <TextBox Width="38" Height="26" Margin="0" Text="{Binding PrintPreviewPageNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+             <TextBlock Text="{Binding PageCount, StringFormat=' of {0}'}" FontSize="11.5" VerticalAlignment="Center" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+            </StackPanel>
+            <TextBlock Text="{Binding PrintPreviewPageDimensionsMm}" FontSize="11.5" VerticalAlignment="Center" Foreground="{DynamicResource NexusForegroundPrimary}"/>
+           </DockPanel>
+           <TextBlock Text="{Binding PrintPreviewSourceLabel}" FontSize="10.5" Foreground="{DynamicResource NexusForegroundSecondary}" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+          </StackPanel>
+         </Border>
+
+         <!-- Page Disposition Card -->
+         <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+          <StackPanel>
+           <TextBlock Text="Page Disposition" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,8"/>
+           <TextBlock Text="Orientation:" FontSize="11.5" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,6"/>
+           <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+            <RadioButton Content="Auto" IsChecked="{Binding IsPrintOrientationAuto, Mode=TwoWay}" GroupName="PrintOrientation" Margin="0,0,16,0"/>
+            <RadioButton Content="Portrait" IsChecked="{Binding IsPrintOrientationPortrait, Mode=TwoWay}" GroupName="PrintOrientation" Margin="0,0,16,0"/>
+            <RadioButton Content="Landscape" IsChecked="{Binding IsPrintOrientationLandscape, Mode=TwoWay}" GroupName="PrintOrientation"/>
+           </StackPanel>
+           <TextBlock Text="Size:" FontSize="11.5" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,6"/>
+           <Grid>
+            <Grid.ColumnDefinitions>
+             <ColumnDefinition Width="*"/>
+             <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <RadioButton Grid.Column="0" Content="Fit" IsChecked="{Binding IsPrintSizeFit, Mode=TwoWay}" GroupName="PrintSizeMode" Margin="0,0,0,6"/>
+            <RadioButton Grid.Column="1" Content="Real Size" IsChecked="{Binding IsPrintSizeReal, Mode=TwoWay}" GroupName="PrintSizeMode" Margin="0,0,0,6"/>
+           </Grid>
+           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <RadioButton Content="Custom scale" IsChecked="{Binding IsPrintSizeCustom, Mode=TwoWay}" GroupName="PrintSizeMode" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Width="52" Height="26" Margin="0,0,4,0" Text="{Binding PrintCustomScalePercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsPrintSizeCustom}"/>
+            <TextBlock Text="%" FontSize="11.5" VerticalAlignment="Center" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+           </StackPanel>
+          </StackPanel>
+         </Border>
+        </StackPanel>
+
+        <!-- Right Column -->
+        <StackPanel Grid.Column="2">
+         <!-- Print Pages Card -->
+         <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+          <StackPanel>
+           <TextBlock Text="Print Pages" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,6"/>
+           <TextBlock Text="Print:" FontSize="11.5" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,6"/>
+           <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <RadioButton Content="All" IsChecked="{Binding IsPrintAllPages, Mode=TwoWay}" GroupName="PrintPageScope" Margin="0,0,28,0"/>
+            <RadioButton Content="Current" IsChecked="{Binding IsPrintCurrentPage, Mode=TwoWay}" GroupName="PrintPageScope"/>
+           </StackPanel>
+           <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+             <ColumnDefinition Width="Auto"/>
+             <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <RadioButton Grid.Column="0" Content="Ranges" IsChecked="{Binding IsPrintPageRange, Mode=TwoWay}" GroupName="PrintPageScope" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" Height="28" Margin="0" Text="{Binding PrintPageRangeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Contoh: 1-3, 5"/>
+           </Grid>
+           <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="More options:" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource NexusForegroundSecondary}"/>
+            <ComboBox Width="130" Height="28" Margin="0" ItemsSource="{Binding PrintSubsetOptions}" SelectedIndex="{Binding SelectedPrintSubsetIndex, Mode=TwoWay}"/>
+           </StackPanel>
+           <CheckBox Content="Invert Pages" IsChecked="{Binding PrintInvertPages, Mode=TwoWay}"/>
+          </StackPanel>
+         </Border>
+
+         <!-- Color & Quality Card -->
+         <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+          <StackPanel>
+           <TextBlock Text="Color &amp; Quality" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,6"/>
+           <TextBlock Text="Color management:" FontSize="11.5" Foreground="{DynamicResource NexusForegroundSecondary}" Margin="0,0,0,6"/>
+           <StackPanel Orientation="Horizontal">
+            <RadioButton Content="Grayscale" IsChecked="{Binding IsPrintGrayscale, Mode=TwoWay}" GroupName="PrintColorMode" Margin="0,0,24,0"/>
+            <RadioButton Content="Color" IsChecked="{Binding IsPrintColor, Mode=TwoWay}" GroupName="PrintColorMode"/>
+           </StackPanel>
+          </StackPanel>
+         </Border>
+
+         <!-- Duplex printing Card -->
+         <Border BorderBrush="{DynamicResource NexusContentBorder}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+          <StackPanel>
+           <TextBlock Text="Duplex printing" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}" Margin="0,0,0,8"/>
+           <Grid>
+            <Grid.ColumnDefinitions>
+             <ColumnDefinition Width="*"/>
+             <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <RadioButton Grid.Column="0" Content="None" IsChecked="{Binding IsPrintDuplexNone, Mode=TwoWay}" GroupName="PrintDuplexMode" Margin="0,0,0,6"/>
+            <RadioButton Grid.Column="1" Content="Long edge" IsChecked="{Binding IsPrintDuplexLongEdge, Mode=TwoWay}" GroupName="PrintDuplexMode" Margin="0,0,0,6"/>
+           </Grid>
+           <RadioButton Content="Short edge" IsChecked="{Binding IsPrintDuplexShortEdge, Mode=TwoWay}" GroupName="PrintDuplexMode"/>
+          </StackPanel>
+         </Border>
+        </StackPanel>
+       </Grid>
+      </StackPanel>
+     </ScrollViewer>
+
+     <!-- Modal Footer -->
+     <DockPanel Grid.Row="2" Margin="0,14,0,0">
+      <Button DockPanel.Dock="Left" Content="Printer settings" Height="34" Padding="14,0" Margin="0" Click="OpenSystemPrintSettings_Click"/>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+       <Button Content="Cancel" Width="84" Height="34" Margin="0,0,8,0" Command="{Binding ClosePrintDialogCommand}"/>
+       <Button x:Name="ExecutePrintModalButton" Content="Print" Width="84" Height="34" Margin="0" Style="{StaticResource NexusPrimaryButtonStyle}" Command="{Binding ExecutePrintCommand}"/>
+      </StackPanel>
+     </DockPanel>
+    </Grid>
+   </Border>
+  </Grid>
  </Grid>
 </UserControl>

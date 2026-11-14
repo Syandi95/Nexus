@@ -25,6 +25,7 @@ namespace Nexus.App.ViewModels
         private string _name = string.Empty;
         private string _sizeText = string.Empty;
         private string _pageCountText = string.Empty;
+        private string _dimensionsCmText = string.Empty;
         private int _pageCount;
         private string _dateText = string.Empty;
         private string _statusText = string.Empty;
@@ -37,6 +38,24 @@ namespace Nexus.App.ViewModels
         public string Name { get => _name; set => SetProperty(ref _name, value); }
         public string SizeText { get => _sizeText; set => SetProperty(ref _sizeText, value); }
         public string PageCountText { get => _pageCountText; set => SetProperty(ref _pageCountText, value); }
+        public string DimensionsCmText
+        {
+            get => _dimensionsCmText;
+            set
+            {
+                if (SetProperty(ref _dimensionsCmText, value))
+                    OnPropertyChanged(nameof(HasDimensionsCm));
+            }
+        }
+        public bool HasDimensionsCm => !string.IsNullOrWhiteSpace(_dimensionsCmText);
+
+        public static string FormatCmValue(double cm)
+        {
+            var idCulture = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+            return Math.Abs(cm - Math.Round(cm)) < 0.05
+                ? Math.Round(cm).ToString("0", idCulture)
+                : cm.ToString("0.0", idCulture);
+        }
         public int PageCount { get => _pageCount; set { if(SetProperty(ref _pageCount,value)) OnPropertyChanged(nameof(IsReady)); } }
         public bool IsLoading { get => _isLoading; set { if(SetProperty(ref _isLoading,value)) OnPropertyChanged(nameof(IsReady)); } }
         public string ImportError { get => _importError; set { if(SetProperty(ref _importError,value)) OnPropertyChanged(nameof(IsReady)); } }
@@ -545,16 +564,34 @@ namespace Nexus.App.ViewModels
                 if (_isClosed || !_pdfFiles.Contains(item)) return;
                 if(pageCount<=0) throw new InvalidDataException("PDF tidak memiliki halaman yang dapat dibaca.");
 
+                string dimensionsCm = await Task.Run(() =>
+                {
+                    try
+                    {
+                        var sizes = _pdfEngineService.GetPageSizes(item.Path, _workspaceCts.Token);
+                        if (sizes != null && sizes.Count > 0 && sizes[0].Width > 0 && sizes[0].Height > 0)
+                        {
+                            double wCm = sizes[0].Width * 2.54 / 72.0;
+                            double hCm = sizes[0].Height * 2.54 / 72.0;
+                            return $"{PdfFileItem.FormatCmValue(wCm)} × {PdfFileItem.FormatCmValue(hCm)} cm";
+                        }
+                    }
+                    catch { }
+                    return string.Empty;
+                });
+                if (_isClosed || !_pdfFiles.Contains(item)) return;
+
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     item.SizeText = FormatFileSize(fi.Length);
                     item.PageCount = pageCount;
                     item.PageCountText = $"{pageCount} halaman";
+                    item.DimensionsCmText = dimensionsCm;
                     item.DateText = fi.LastWriteTime.ToString("dd/MM/yyyy");
                 }).Task;
 
                 var targetSize = await GetPreviewPixelSizeAsync(
-                    "PdfCardPreviewImage", item, fallbackWidth: 180, fallbackHeight: 130);
+                    "PdfCardPreviewImage", item, fallbackWidth: 360, fallbackHeight: 320);
                 var result = await Task.Run(() => RenderPreview(item.Path, targetSize));
 
                 await Application.Current.Dispatcher.InvokeAsync(() =>

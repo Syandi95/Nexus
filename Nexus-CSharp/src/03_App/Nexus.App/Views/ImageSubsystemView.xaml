@@ -84,7 +84,7 @@
         <Grid x:Name="RemoveBackgroundHeader" Grid.Row="0" Margin="28,20,28,12">
             <StackPanel Orientation="Horizontal">
                 <Button x:Name="BtnImageToolsRemoveBackground" Content="Remove Background"
-                        MinWidth="154" Margin="0,0,8,0" Tag="RemoveBG"
+                        Width="158" Margin="0,0,8,0" Tag="RemoveBG"
                         ToolTip="Gunakan mode Remove Background"
                         Command="{Binding SelectModeCommand}" CommandParameter="RemoveBG">
                     <Button.Style>
@@ -100,7 +100,7 @@
                     </Button.Style>
                 </Button>
                 <Button x:Name="BtnImageToolsUpscale" Content="AI Upscale"
-                        MinWidth="132" Tag="Upscale"
+                        Width="158" Tag="Upscale"
                         ToolTip="Gunakan mode AI Upscale"
                         Command="{Binding SelectModeCommand}" CommandParameter="Upscale">
                     <Button.Style>
@@ -116,7 +116,7 @@
                     </Button.Style>
                 </Button>
                 <Button x:Name="BtnImageToolsInpaint" Content="Object Removal"
-                        MinWidth="142" Margin="8,0,0,0" Tag="Inpaint"
+                        Width="158" Margin="8,0,0,0" Tag="Inpaint"
                         ToolTip="Gunakan mode Object Removal (Hapus Objek)"
                         Command="{Binding SelectModeCommand}" CommandParameter="Inpaint">
                     <Button.Style>
@@ -174,10 +174,16 @@
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <TextBlock Text="{Binding DropZoneSubtitle}" HorizontalAlignment="Center"
                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            <Button x:Name="SelectImageButton" Content="Pilih Gambar"
-                                    Margin="0,18,0,0" Padding="20,10"
+                            <Button x:Name="SelectImageButton"
+                                    Width="168" Height="38" HorizontalAlignment="Center"
+                                    Margin="0,20,0,0" Padding="16,0" Cursor="Hand"
                                     Command="{Binding SelectImageCommand}"
-                                    Style="{StaticResource NexusPrimaryButtonStyle}"/>
+                                    Style="{StaticResource NexusPrimaryButtonStyle}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock services:NexusIcon.Glyph="Add" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Pilih Gambar" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Border>
 
@@ -203,8 +209,21 @@
                                 </Style.Triggers>
                             </Style>
                         </Grid.Style>
-                        <Border x:Name="RemoveBackgroundAfterSurface"
-                                Background="{StaticResource RemoveBackgroundCheckerboardBrush}"/>
+                        <Border x:Name="RemoveBackgroundAfterSurface">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource RemoveBackgroundCheckerboardBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsUpscaleMode}" Value="True">
+                                            <Setter Property="Background" Value="White"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsInpaintMode}" Value="True">
+                                            <Setter Property="Background" Value="White"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
                         <Grid x:Name="RemoveBackgroundImageStage" Margin="4" ClipToBounds="False" RenderTransformOrigin="0.5,0.5">
                             <Grid.RenderTransform>
                                 <TransformGroup>
@@ -879,24 +898,44 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Width="190" Height="230" Margin="0,0,16,16"
-                                                Style="{StaticResource NexusCardStyle}" Padding="0" CornerRadius="14">
+                                        <Border x:Name="ImageBatchCardBorder" Width="192" Height="236" Margin="0,0,16,16"
+                                                Style="{StaticResource NexusCardStyle}"
+                                                Background="{DynamicResource NexusSurfaceBase}"
+                                                BorderBrush="{DynamicResource NexusContentBorder}"
+                                                BorderThickness="1"
+                                                Padding="0" CornerRadius="12" SnapsToDevicePixels="True" UseLayoutRounding="True">
                                             <Grid>
                                                 <Grid.RowDefinitions>
-                                                    <RowDefinition Height="145"/>
+                                                    <RowDefinition Height="150"/>
                                                     <RowDefinition Height="*"/>
                                                 </Grid.RowDefinitions>
 
-                                                <!-- Thumbnail Area with True Aspect Ratio (Stretch="Uniform") -->
-                                                <Border Grid.Row="0" CornerRadius="14,14,0,0" ClipToBounds="True"
-                                                        Background="{StaticResource RemoveBackgroundCheckerboardBrush}">
+                                                <!-- Thumbnail Area with Subtle Border + Inner Paper Shadow (Checkerboard only in Remove Background mode) -->
+                                                <Border Grid.Row="0" CornerRadius="12,12,0,0" ClipToBounds="True"
+                                                        Background="Transparent" Padding="14,14,14,6">
                                                     <Grid>
-                                                        <Image Source="{Binding DisplayImage}" Stretch="Uniform"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                               RenderOptions.BitmapScalingMode="HighQuality" Margin="6"/>
+                                                        <Border x:Name="BatchCardThumbnailSurface" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                CornerRadius="3" ClipToBounds="True">
+                                                            <Border.Effect>
+                                                                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.20"/>
+                                                            </Border.Effect>
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="White"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding DataContext.IsRemoveBgMode, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}" Value="True">
+                                                                            <Setter Property="Background" Value="{StaticResource RemoveBackgroundCheckerboardBrush}"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <Image Source="{Binding DisplayImage}" Stretch="Uniform"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                        </Border>
 
                                                         <!-- Processing Spinner Overlay -->
-                                                        <Border Background="#A0000000"
+                                                        <Border Background="#A0000000" CornerRadius="8"
                                                                 Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                                                 <Control Template="{StaticResource NexusModernRingSpinnerTemplate}" HorizontalAlignment="Center"/>
@@ -907,7 +946,7 @@
 
                                                         <!-- Completed Badge -->
                                                         <Border Background="#D010B981" CornerRadius="10" Padding="6,2"
-                                                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2"
                                                                 Visibility="{Binding IsCompleted, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock services:NexusIcon.Glyph="Check" FontSize="11" Foreground="White" Margin="0,0,4,0"/>
@@ -917,7 +956,7 @@
 
                                                         <!-- Failed Badge -->
                                                         <Border Background="#D0EF4444" CornerRadius="10" Padding="6,2"
-                                                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2"
                                                                 Visibility="{Binding IsFailed, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                             <StackPanel Orientation="Horizontal">
                                                                 <TextBlock services:NexusIcon.Glyph="Error" FontSize="11" Foreground="White" Margin="0,0,4,0"/>
@@ -925,29 +964,45 @@
                                                             </StackPanel>
                                                         </Border>
 
-                                                        <!-- Soft Delete Button Overlay (Top Right) -->
-                                                        <Button Style="{StaticResource NexusSoftDeleteIconButtonStyle}"
-                                                                Command="{Binding DataContext.RemoveBatchItemCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Width="32" Height="32" Padding="0"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6"
-                                                                ToolTip="Hapus dari antrean"
+                                                        <!-- Soft Delete Button Overlay (Top Right - Hover Only) -->
+                                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0"
                                                                 Visibility="{Binding CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBlock services:NexusIcon.Glyph="Delete" FontSize="13"
-                                                                       Foreground="{DynamicResource NexusSoftDeleteForeground}"/>
-                                                        </Button>
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Opacity" Value="0"/>
+                                                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsMouseOver, ElementName=ImageBatchCardBorder}" Value="True">
+                                                                            <Setter Property="Opacity" Value="1"/>
+                                                                            <Setter Property="IsHitTestVisible" Value="True"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <Button Style="{StaticResource NexusSoftDeleteIconButtonStyle}"
+                                                                    Command="{Binding DataContext.RemoveBatchItemCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}"
+                                                                    CommandParameter="{Binding}"
+                                                                    Width="30" Height="30" Padding="0"
+                                                                    ToolTip="Hapus dari antrean">
+                                                                <TextBlock services:NexusIcon.Glyph="Delete" FontSize="13"
+                                                                           Foreground="{DynamicResource NexusSoftDeleteForeground}"/>
+                                                            </Button>
+                                                        </Border>
                                                     </Grid>
                                                 </Border>
 
                                                 <!-- File Metadata & Status -->
-                                                <StackPanel Grid.Row="1" Margin="12,8,12,10" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                                <StackPanel Grid.Row="1" Margin="12,4,12,12" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+                                                    <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold"
                                                                Foreground="{DynamicResource TextPrimaryBrush}"
+                                                               TextAlignment="Center" HorizontalAlignment="Center"
                                                                TextTrimming="CharacterEllipsis"/>
-                                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0">
+                                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               TextAlignment="Center" HorizontalAlignment="Center" Margin="0,3,0,0">
                                                         <Run Text="{Binding SizeText}"/>
                                                     </TextBlock>
                                                     <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="SemiBold"
+                                                               TextAlignment="Center" HorizontalAlignment="Center"
                                                                Foreground="{Binding StatusForeground}" Margin="0,2,0,0"/>
                                                 </StackPanel>
                                             </Grid>

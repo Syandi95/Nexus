@@ -544,7 +544,9 @@ public static class BrowserUseDomEngine
                     if (st && st.cursor && nonInt[st.cursor]) return false;
                     if (el.disabled || el.readOnly) return false;
 
-                    var semTags = {{ 'a':1, 'button':1, 'input':1, 'select':1, 'textarea':1, 'summary':1 }};
+                    var semTags = {{ 'a':1, 'button':1, 'input':1, 'select':1, 'textarea':1, 'summary':1, 'video':1 }};
+                    if (tag === 'iframe' && (el.src || el.getAttribute('data-src') || el.closest('.player, .video-content, .embed-responsive, #embed_holder, #pembed'))) return true;
+                    if (el.classList && (el.classList.contains('play-button') || el.classList.contains('vjs-big-play-button') || el.classList.contains('plyr__control--overlaid'))) return true;
                     if (semTags[tag]) return true;
                     if (el.isContentEditable || el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === 'plaintext-only') return true;
 
@@ -588,13 +590,13 @@ public static class BrowserUseDomEngine
                         }}
                     }}
                     if (!lbl && tag === 'a' && typeof el.closest === 'function') {{
-                        var cardWrap = el.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer, ytd-compact-video-renderer, article, .card, .item, .post, .film-card, .bixbox, li');
+                        var cardWrap = el.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer, ytd-compact-video-renderer, article, .card, .item, .post, [class*=""card"" i], [class*=""item"" i], figure, li');
                         if (cardWrap && typeof cardWrap.querySelector === 'function') {{
                             var h3El = cardWrap.querySelector('#video-title, h1, h2, h3, h4, .title, .name, .media-item-headline, img[alt]');
                             if (h3El) lbl = (h3El.innerText || h3El.getAttribute('title') || h3El.getAttribute('alt') || h3El.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
                         }}
                     }}
-                    if ((tag === 'video' || (el.classList && (el.classList.contains('play-button') || el.classList.contains('vjs-big-play-button')))) && (!lbl || lbl === tag)) {{
+                    if ((tag === 'video' || tag === 'iframe' || (el.classList && (el.classList.contains('play-button') || el.classList.contains('vjs-big-play-button') || el.classList.contains('plyr__control--overlaid')))) && (!lbl || lbl === tag)) {{
                         lbl = 'Play Video';
                     }}
                     if (tag === 'a' && el.href) {{
@@ -720,7 +722,7 @@ public static class BrowserUseDomEngine
                     return !!r && r.width >= 6 && r.height >= 6;
                 }}
                 // Pass 1B-1: High-signal episode/sub-item links, video titles, and player controls FIRST so genre/tag links never crowd them out
-                var highSignalLinks = document.querySelectorAll('a#video-title, a#video-title-link, ytd-video-renderer a[href*=""/watch?v=""], ytm-video-with-context-renderer a[href*=""/watch?v=""], a[href*=""/watch?v=""], .gs_rt a, a[href*=""episode"" i], a[href*=""-ep-"" i], a[href*=""/ep-"" i], [data-episode], .episodes a, .episode-list a, .episodelist a, .eplister a, .ep-list a, #episode-list a, .play-button, .vjs-big-play-button, [aria-label*=""play"" i], [aria-label*=""putar"" i], video, a.obj_galley_link, a[href$="".pdf""], h1 a[href], h2 a[href], h3 a[href], .film-card a[href], .bixbox a[href]');
+                var highSignalLinks = document.querySelectorAll('a#video-title, a#video-title-link, ytd-video-renderer a[href*=""/watch?v=""], ytm-video-with-context-renderer a[href*=""/watch?v=""], a[href*=""/watch?v=""], .gs_rt a, a[href*=""episode"" i], a[href*=""-ep-"" i], a[href*=""/ep-"" i], [data-episode], [class*=""episode"" i] a[href], .episodes a, .episode-list a, .episodelist a, .ep-list a, #episode-list a, .play-button, .vjs-big-play-button, [aria-label*=""play"" i], [aria-label*=""putar"" i], video, a.obj_galley_link, a[href$="".pdf""], h1 a[href], h2 a[href], h3 a[href], [class*=""card"" i] a[href], figure a[href]');
                 for (var hsl = 0; hsl < highSignalLinks.length && nextIdx <= {maxElements}; hsl++) {{
                     var hEl = highSignalLinks[hsl];
                     if (!isInsideNavOrHeader(hEl) && isElementAccepted(hEl) && isRenderedContentElement(hEl)) {{
@@ -1020,7 +1022,7 @@ public static class BrowserUseDomEngine
                             }}
                         }} catch(pve) {{}}
                     }}
-                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false, href: resolvedClickHref }});
+                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false, href: resolvedClickHref, centerX: Math.round(cx), centerY: Math.round(cy), tagName: actualTag }});
                 }}
                 else if (act === 'input') {{
                     var val = '{safeVal}';
@@ -1047,11 +1049,18 @@ public static class BrowserUseDomEngine
                         el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                     }}
+                    var readBackVal = (isCe && actualTag !== 'input' && actualTag !== 'textarea')
+                        ? (el.innerText || el.textContent || '')
+                        : (el.value !== undefined ? String(el.value) : '');
+                    if (val.length > 0 && readBackVal.trim().length === 0) {{
+                        return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'INPUT_READBACK_MISMATCH', readBackValue: readBackVal }});
+                    }}
+                    var submittedViaFormOrScopedBtn = false;
+                    var dropdownDismissed = false;
                     if ({enterFlag}) {{
                         ['keydown', 'keypress', 'keyup'].forEach(function(kType) {{
                             el.dispatchEvent(new KeyboardEvent(kType, {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }}));
                         }});
-                        var submittedViaFormOrScopedBtn = false;
                         if (el.form) {{
                             try {{
                                 if (typeof el.form.requestSubmit === 'function') {{ el.form.requestSubmit(); submittedViaFormOrScopedBtn = true; }}
@@ -1060,17 +1069,34 @@ public static class BrowserUseDomEngine
                         }}
                         if (!submittedViaFormOrScopedBtn && typeof el.closest === 'function') {{
                             try {{
-                                var searchContainer = el.closest('yt-searchbox, ytd-searchbox, form, [role=""search""], .search-box, .search-form');
+                                var searchContainer = el.closest('yt-searchbox, ytd-searchbox, form, [role=""search""], .search-box, .search-form, header') || document;
                                 if (searchContainer && typeof searchContainer.querySelector === 'function') {{
                                     var scopedSubmitBtn = searchContainer.querySelector('button.ytSearchboxComponentSearchButton, button#search-icon-legacy, button[type=""submit""], input[type=""submit""], button[aria-label*=""Search"" i], button[aria-label*=""Telusuri"" i], button[aria-label*=""Cari"" i]');
                                     if (scopedSubmitBtn && !scopedSubmitBtn.disabled && typeof scopedSubmitBtn.click === 'function') {{
                                         scopedSubmitBtn.click();
+                                        submittedViaFormOrScopedBtn = true;
                                     }}
                                 }}
                             }} catch(sbe) {{}}
                         }}
+                        // Explicitly dismiss/close any open autocomplete or search suggestion dropdown without firing Escape on contenteditable/Lexical inputs (which clears WhatsApp Web search!)
+                        try {{
+                            if (!isCe) {{
+                                if (el.setAttribute) el.setAttribute('aria-expanded', 'false');
+                                if (typeof el.blur === 'function') el.blur();
+                            }}
+                            if (typeof document.querySelectorAll === 'function') {{
+                                var openPopups = document.querySelectorAll('.ytSearchboxComponentSuggestionsContainer, ytd-searchbox [role=""listbox""], form [role=""listbox""], [role=""search""] [role=""listbox""], .sbdd_b, .gstl_50, .autocomplete-suggestions, .search-suggestions');
+                                for (var pi = 0; pi < openPopups.length; pi++) {{
+                                    if (openPopups[pi] && openPopups[pi].style) {{
+                                        openPopups[pi].style.display = 'none';
+                                    }}
+                                }}
+                            }}
+                            dropdownDismissed = true;
+                        }} catch(de) {{}}
                     }}
-                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false }});
+                    return JSON.stringify({{ ok: true, stale: false, usedXPath: false, submitted: submittedViaFormOrScopedBtn, dropdownDismissed: dropdownDismissed, readBackValue: readBackVal, centerX: Math.round(cx), centerY: Math.round(cy), isContentEditable: !!isCe, tagName: actualTag }});
                 }}
                 else if (act === 'select') {{
                     var optVal = '{safeVal}'.toLowerCase();
@@ -1088,7 +1114,12 @@ public static class BrowserUseDomEngine
                             return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'OPTION_NOT_FOUND' }});
                         }}
                         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        return JSON.stringify({{ ok: true, stale: false, usedXPath: false }});
+                        var selOpt = el.options[el.selectedIndex];
+                        var readBackSel = selOpt ? (selOpt.value || selOpt.text || '') : '';
+                        if (el.selectedIndex !== i) {{
+                            return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'SELECT_READBACK_MISMATCH', readBackValue: readBackSel }});
+                        }}
+                        return JSON.stringify({{ ok: true, stale: false, usedXPath: false, readBackValue: readBackSel }});
                     }}
                     return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'NOT_A_SELECT_ELEMENT' }});
                 }}
@@ -1103,12 +1134,13 @@ public static class BrowserUseDomEngine
     /// Ported from browser-use/tools/service.py (_SEARCH_PAGE_JS_BODY):
     /// Zero-LLM-cost instant TreeWalker text search on the live DOM with context and element path.
     /// </summary>
+    private static string JsStr(string? value) => System.Text.Json.JsonSerializer.Serialize(value ?? string.Empty);
+
     public static string GetSearchPageScript(string pattern, int maxResults = 15)
     {
-        string safePat = (pattern ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", " ").Replace("\n", " ");
         return $@"(function() {{
             try {{
-                var q = '{safePat}'.toLowerCase();
+                var q = ({JsStr(pattern)}).toLowerCase();
                 if (!q || !document.body) return JSON.stringify({{ total: 0, matches: [] }});
                 var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                 var results = [];
@@ -1146,10 +1178,9 @@ public static class BrowserUseDomEngine
     /// </summary>
     public static string GetFindElementsScript(string cssSelector, int limit = 20)
     {
-        string safeSel = (cssSelector ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'");
         return $@"(function() {{
             try {{
-                var all = document.querySelectorAll('{safeSel}');
+                var all = document.querySelectorAll({JsStr(cssSelector)});
                 var total = all.length;
                 var items = [];
                 var count = Math.min(total, {limit});
@@ -1176,10 +1207,9 @@ public static class BrowserUseDomEngine
     /// </summary>
     public static string GetSendKeysScript(string keys)
     {
-        string safeKey = (keys ?? "Enter").Trim().Replace("\\", "\\\\").Replace("'", "\\'");
         return $@"(function() {{
             try {{
-                var k = '{safeKey}';
+                var k = {JsStr((keys ?? "Enter").Trim())};
                 var target = document.activeElement || document.body;
                 if (k.toLowerCase() === 'pagedown') {{ window.scrollBy({{ top: 600, behavior: 'smooth' }}); return 'OK:PageDown'; }}
                 if (k.toLowerCase() === 'pageup') {{ window.scrollBy({{ top: -600, behavior: 'smooth' }}); return 'OK:PageUp'; }}
@@ -1201,10 +1231,9 @@ public static class BrowserUseDomEngine
     /// </summary>
     public static string GetScrollToTextScript(string text)
     {
-        string safeTxt = (text ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", " ").Replace("\n", " ");
         return $@"(function() {{
             try {{
-                var needle = '{safeTxt}'.toLowerCase();
+                var needle = ({JsStr(text)}).toLowerCase();
                 if (!needle || !document.body) return JSON.stringify({{ found: false }});
                 var candidates = document.querySelectorAll('h1, h2, h3, h4, a, button, p, span, li, td, div');
                 for (var i = 0; i < candidates.length; i++) {{
@@ -1557,6 +1586,375 @@ public static class BrowserUseDomEngine
             CleanMarkdownViewportText: sanitizedMarkdown,
             PixelsAbove: pixelsAbove,
             PixelsBelow: pixelsBelow);
+    }
+
+
+    /// <summary>
+    /// Structural RFC-1123 / DNS URL validator (Zero site-specific hardcoded strings):
+    /// Rejects null/empty strings, non-HTTP(S) schemes, single-label hosts, and malformed DNS labels
+    /// containing consecutive hyphens ('--') outside valid Punycode ('xn--') prefixes.
+    /// </summary>
+    public static bool IsValidNavigatingOrSourceUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            return false;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return false;
+        string host = uri.Host ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(host) || !host.Contains('.', StringComparison.Ordinal))
+            return false;
+        var labels = host.Split('.');
+        foreach (var rawLabel in labels)
+        {
+            if (string.IsNullOrWhiteSpace(rawLabel))
+                return false;
+            if (rawLabel.StartsWith('-') || rawLabel.EndsWith('-'))
+                return false;
+            string checkPart = rawLabel.StartsWith("xn--", StringComparison.OrdinalIgnoreCase)
+                ? rawLabel[4..]
+                : rawLabel;
+            if (checkPart.Contains("--", StringComparison.Ordinal))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Balanced JSON brace detector for local GGUF streaming (Gemma/Qwen):
+    /// Returns true only when at least one root JSON object '{...}' is completely closed outside string literals.
+    /// </summary>
+    public static bool HasCompleteBalancedJsonObject(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        int depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        bool sawOpeningBrace = false;
+        foreach (char c in text)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\' && inString)
+            {
+                escaped = true;
+                continue;
+            }
+            if (c == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+            if (inString)
+                continue;
+            if (c == '{')
+            {
+                depth++;
+                sawOpeningBrace = true;
+            }
+            else if (c == '}' && sawOpeningBrace)
+            {
+                depth--;
+                if (depth == 0)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Executes real HTML5 <video> / player seek and playback verification in the live DOM (F-02 fix):
+    /// Sets video.currentTime when seekSeconds > 0, invokes video.play(), and reads back actual media state.
+    /// </summary>
+
+    /// <summary>
+    /// Tahap 1 Native CDP (jev-ultrafast port): Builds Chromium DevTools Protocol Input.dispatchMouseEvent JSON payloads
+    /// for moving to and clicking the verified viewport center (x, y) of an interactive element.
+    /// </summary>
+    public static (string MouseMovedJson, string MousePressedJson, string MouseReleasedJson) BuildCdpMouseClickEventsJson(double x, double y)
+    {
+        int ix = (int)Math.Round(x);
+        int iy = (int)Math.Round(y);
+        string moved = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "mouseMoved",
+            x = ix,
+            y = iy,
+            button = "none",
+             modifiers = 0
+        });
+        string pressed = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "mousePressed",
+            x = ix,
+            y = iy,
+            button = "left",
+            buttons = 1,
+            clickCount = 1,
+            modifiers = 0
+        });
+        string released = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "mouseReleased",
+            x = ix,
+            y = iy,
+            button = "left",
+            buttons = 0,
+            clickCount = 1,
+            modifiers = 0
+        });
+        return (moved, pressed, released);
+    }
+
+    /// <summary>
+    /// Tahap 1 Native CDP: Builds Chromium DevTools Protocol Input.insertText JSON payload for trusted text entry
+    /// (works natively in WhatsApp Web Lexical contenteditable, YouTube Polymer searchbox, and React/ProseMirror inputs).
+    /// </summary>
+    public static string BuildCdpInsertTextJson(string text)
+    {
+        return System.Text.Json.JsonSerializer.Serialize(new { text = text ?? string.Empty });
+    }
+
+    /// <summary>
+    /// Tahap 1 Native CDP: Builds Chromium DevTools Protocol Input.dispatchKeyEvent (keyDown + keyUp) JSON payloads.
+    /// </summary>
+    public static (string KeyDownJson, string KeyUpJson) BuildCdpKeyEventsJson(string keyName)
+    {
+        string clean = string.IsNullOrWhiteSpace(keyName) ? "Enter" : keyName.Trim();
+        var (key, code, vk, txt) = clean.ToLowerInvariant() switch
+        {
+            "enter" or "return" => ("Enter", "Enter", 13, "\r"),
+            "escape" or "esc" => ("Escape", "Escape", 27, ""),
+            "tab" => ("Tab", "Tab", 9, ""),
+            "backspace" => ("Backspace", "Backspace", 8, ""),
+            "arrowdown" or "down" => ("ArrowDown", "ArrowDown", 40, ""),
+            "arrowup" or "up" => ("ArrowUp", "ArrowUp", 38, ""),
+            "space" or " " => (" ", "Space", 32, " "),
+            _ => (clean, clean, (int)(clean.Length == 1 ? char.ToUpperInvariant(clean[0]) : 13), clean.Length == 1 ? clean : "")
+        };
+
+        string kd = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = string.IsNullOrEmpty(txt) ? "rawKeyDown" : "keyDown",
+            windowsVirtualKeyCode = vk,
+            nativeVirtualKeyCode = vk,
+            key = key,
+            code = code,
+            text = txt,
+            unmodifiedText = txt
+        });
+        string ku = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "keyUp",
+            windowsVirtualKeyCode = vk,
+            nativeVirtualKeyCode = vk,
+            key = key,
+            code = code
+        });
+        return (kd, ku);
+    }
+
+    /// <summary>
+    /// Tahap 1 Native CDP Pre-Action Validator & Caret Preparer:
+    /// Runs all 5 Freshness Guards, scrolls element into viewport center, focuses and clears existing text (for input),
+    /// and returns verified (centerX, centerY) coordinates for CoreWebView2.CallDevToolsProtocolMethodAsync.
+    /// </summary>
+    public static string GetPrepareElementForCdpActionScript(
+        int index,
+        string? fallbackXPath,
+        string actionType,
+        string? expectedTag = null,
+        string? expectedRole = null)
+    {
+        string safeExpTag = (expectedTag ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").ToLowerInvariant();
+        string safeExpRole = (expectedRole ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").ToLowerInvariant();
+        string safeAct = (actionType ?? "click").Replace("\\", "\\\\").Replace("'", "\\'").ToLowerInvariant();
+
+        return $@"(function() {{
+            try {{
+                var el = (window.__nexusDomMap && window.__nexusDomMap[{index}])
+                    || document.querySelector('[data-nexus-idx=""{index}""]')
+                    || document.querySelector('[data-agent-ref=""e{index}""]');
+                if (!el || !el.isConnected) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_STALE_OR_DISCONNECTED' }});
+                }}
+                var actualTag = (el.tagName || '').toLowerCase();
+                var actualRole = (el.getAttribute ? (el.getAttribute('role') || actualTag) : actualTag).toLowerCase();
+                var expTag = '{safeExpTag}';
+                var expRole = '{safeExpRole}';
+                if (expTag && actualTag !== expTag) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_TAG_MISMATCH:' + actualTag }});
+                }}
+                if (expRole && actualRole !== expRole && actualTag !== expRole) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_ROLE_MISMATCH:' + actualRole }});
+                }}
+                var act = '{safeAct}';
+                if (el.disabled || (el.getAttribute && (el.getAttribute('disabled') !== null || el.getAttribute('aria-disabled') === 'true')) || (act === 'input' && el.readOnly)) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_DISABLED' }});
+                }}
+                var st = (typeof window.getComputedStyle === 'function') ? window.getComputedStyle(el) : el.style;
+                if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') < 0.05 || st.pointerEvents === 'none')) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_NOT_VISIBLE' }});
+                }}
+                try {{
+                    if (typeof el.scrollIntoView === 'function') {{
+                        el.scrollIntoView({{ behavior: 'instant', block: 'center' }});
+                    }}
+                }} catch(se) {{}}
+                var r = (typeof el.getBoundingClientRect === 'function') ? el.getBoundingClientRect() : {{ left: 10, top: 10, width: 40, height: 24 }};
+                if (!r || r.width < 6 || r.height < 6) {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_NOT_VISIBLE' }});
+                }}
+                if (el.getAttribute && el.getAttribute('data-occluded') === 'true') {{
+                    return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_COVERED_BY_OVERLAY' }});
+                }}
+                var cx = r.left + r.width / 2;
+                var cy = r.top + r.height / 2;
+                var isCe = !!(el.isContentEditable || (el.getAttribute && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === 'plaintext-only' || el.getAttribute('role') === 'textbox')));
+                var linkAnchor = (actualTag === 'a') ? el : (typeof el.closest === 'function' ? el.closest('a[href]') : null);
+                var resolvedHref = (linkAnchor && linkAnchor.href) ? linkAnchor.href : (el.href || '');
+                try {{
+                    if (linkAnchor && linkAnchor.getAttribute && linkAnchor.getAttribute('target') === '_blank') {{
+                        linkAnchor.removeAttribute('target');
+                    }}
+                }} catch(te) {{}}
+                try {{ if (typeof el.focus === 'function') el.focus(); }} catch(fe) {{}}
+                if (act === 'input') {{
+                    try {{
+                        if (isCe && actualTag !== 'input' && actualTag !== 'textarea') {{
+                            document.execCommand('selectAll', false, null);
+                            document.execCommand('delete', false, null);
+                        }} else if (el.value !== undefined) {{
+                            el.value = '';
+                        }}
+                    }} catch(ce) {{}}
+                }}
+                return JSON.stringify({{
+                    ok: true,
+                    stale: false,
+                    centerX: Math.max(1, Math.round(cx)),
+                    centerY: Math.max(1, Math.round(cy)),
+                    tagName: actualTag,
+                    isContentEditable: isCe,
+                    href: resolvedHref
+                }});
+            }} catch(e) {{
+                return JSON.stringify({{ ok: false, stale: false, error: String(e) }});
+            }}
+        }})()";
+    }
+
+    /// <summary>
+    /// Tahap 1 Native CDP Post-Input Verifier:
+    /// Reads back the live value from the DOM after CDP Input.insertText (and optionally triggers scoped search submit / hides autocomplete popups).
+    /// </summary>
+    public static string GetVerifyElementPostCdpInputScript(int index, string expectedValue, bool pressEnter)
+    {
+        string enterFlag = pressEnter ? "true" : "false";
+        return $@"(function() {{
+            try {{
+                var el = (window.__nexusDomMap && window.__nexusDomMap[{index}])
+                    || document.querySelector('[data-nexus-idx=""{index}""]')
+                    || document.querySelector('[data-agent-ref=""e{index}""]')
+                    || document.activeElement;
+                if (!el) return JSON.stringify({{ ok: false, error: 'ELEMENT_STALE_OR_DISCONNECTED', readBackValue: '' }});
+                var actualTag = (el.tagName || '').toLowerCase();
+                var isCe = !!(el.isContentEditable || (el.getAttribute && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === 'plaintext-only' || el.getAttribute('role') === 'textbox')));
+                var readBackVal = (isCe && actualTag !== 'input' && actualTag !== 'textarea')
+                    ? (el.innerText || el.textContent || '')
+                    : (el.value !== undefined ? String(el.value) : '');
+                var exp = {JsStr(expectedValue)};
+                if (exp.length > 0 && readBackVal.trim().length === 0) {{
+                    return JSON.stringify({{ ok: false, error: 'INPUT_READBACK_MISMATCH', readBackValue: readBackVal }});
+                }}
+                var submitted = false;
+                if ({enterFlag}) {{
+                    if (el.form) {{
+                        try {{
+                            if (typeof el.form.requestSubmit === 'function') {{ el.form.requestSubmit(); submitted = true; }}
+                            else if (typeof el.form.submit === 'function') {{ el.form.submit(); submitted = true; }}
+                        }} catch(fe) {{}}
+                    }}
+                    if (!submitted && typeof el.closest === 'function') {{
+                        try {{
+                            var sc = el.closest('yt-searchbox, ytd-searchbox, form, [role=""search""], .search-box, .search-form, header') || document;
+                            if (sc && typeof sc.querySelector === 'function') {{
+                                var btn = sc.querySelector('button.ytSearchboxComponentSearchButton, button#search-icon-legacy, button[type=""submit""], input[type=""submit""], button[aria-label*=""Search"" i], button[aria-label*=""Telusuri"" i], button[aria-label*=""Cari"" i]');
+                                if (btn && !btn.disabled && typeof btn.click === 'function') {{
+                                    btn.click();
+                                    submitted = true;
+                                }}
+                            }}
+                        }} catch(se) {{}}
+                    }}
+                    try {{
+                        if (!isCe && typeof el.blur === 'function') el.blur();
+                        if (typeof document.querySelectorAll === 'function') {{
+                            var pops = document.querySelectorAll('.ytSearchboxComponentSuggestionsContainer, ytd-searchbox [role=""listbox""], form [role=""listbox""], [role=""search""] [role=""listbox""], .sbdd_b, .gstl_50, .autocomplete-suggestions, .search-suggestions');
+                            for (var pi = 0; pi < pops.length; pi++) {{
+                                if (pops[pi] && pops[pi].style) pops[pi].style.display = 'none';
+                            }}
+                        }}
+                    }} catch(pe) {{}}
+                }}
+                return JSON.stringify({{ ok: true, readBackValue: readBackVal.trim(), submitted: submitted }});
+            }} catch(e) {{
+                return JSON.stringify({{ ok: false, error: String(e), readBackValue: '' }});
+            }}
+        }})()";
+    }
+
+    public static string GetControlMediaPlaybackScript(int? seekSeconds = null)
+    {
+        int targetSec = seekSeconds.GetValueOrDefault(0);
+        return $@"(function() {{
+            try {{
+                var v = document.querySelector ? document.querySelector('video') : null;
+                var ytp = document.getElementById ? document.getElementById('movie_player') : null;
+                if (!v && !ytp) {{
+                    return JSON.stringify({{ hasVideo: false, playing: false, currentTime: 0, duration: 0, readyState: 0 }});
+                }}
+                var targetTime = {targetSec};
+                if (targetTime > 0) {{
+                    try {{
+                        if (ytp && typeof ytp.seekTo === 'function') {{
+                            ytp.seekTo(targetTime, true);
+                        }}
+                        if (v) {{
+                            v.currentTime = targetTime;
+                        }}
+                    }} catch(se) {{}}
+                }}
+                try {{
+                    if (ytp && typeof ytp.playVideo === 'function') {{
+                        ytp.playVideo();
+                    }}
+                    if (v && v.paused && typeof v.play === 'function') {{
+                        var p = v.play();
+                        if (p && typeof p.catch === 'function') p.catch(function(){{}});
+                    }}
+                }} catch(pe) {{}}
+                var cur = v ? Math.round(v.currentTime || 0) : (ytp && typeof ytp.getCurrentTime === 'function' ? Math.round(ytp.getCurrentTime() || 0) : targetTime);
+                var dur = v ? Math.round(v.duration || 0) : (ytp && typeof ytp.getDuration === 'function' ? Math.round(ytp.getDuration() || 0) : 0);
+                var isPlaying = v ? (!v.paused && !v.ended) : (ytp && typeof ytp.getPlayerState === 'function' ? ytp.getPlayerState() === 1 : false);
+                var rs = v ? (v.readyState || 0) : 4;
+                return JSON.stringify({{
+                    hasVideo: true,
+                    playing: !!isPlaying,
+                    currentTime: isNaN(cur) ? 0 : cur,
+                    duration: isNaN(dur) ? 0 : dur,
+                    readyState: rs
+                }});
+            }} catch(e) {{
+                return JSON.stringify({{ hasVideo: false, playing: false, currentTime: 0, duration: 0, error: String(e) }});
+            }}
+        }})()";
     }
 
     private static string? ExtractAttr(string attrs, string attrName)

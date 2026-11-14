@@ -8,7 +8,7 @@
 /nexus_data/
 /Backups/
 /OpenMausBot-main/
-/Nexus-CSharp/docs/archive/chat_history_backup/
+/Nexus-CSharp/docs/
 **/nexus_data/
 
 # --- .NET / Visual Studio Build Artifacts ---

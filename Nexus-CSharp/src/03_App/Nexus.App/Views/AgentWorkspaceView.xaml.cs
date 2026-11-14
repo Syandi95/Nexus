@@ -161,6 +161,20 @@ public partial class AgentWorkspaceView : UserControl
     {
         UpdateSurfacePresentation();
         RenderSelectedDiff();
+        SyncWebView2LiveTheme();
+    }
+
+    private void SyncWebView2LiveTheme()
+    {
+        try
+        {
+            bool isDark = Nexus.App.Services.ThemeManager.CurrentTheme == Nexus.App.Services.ThemeMode.Dark;
+            string js = isDark
+                ? "if(document.body){document.body.classList.add('dark');}if(document.documentElement){document.documentElement.style.colorScheme='dark';}"
+                : "if(document.body){document.body.classList.remove('dark');}if(document.documentElement){document.documentElement.style.colorScheme='light';}";
+            _ = ExecuteLiveScriptOnWebView2Async(js);
+        }
+        catch { }
     }
 
     private void WrapDiff_Changed(object sender,RoutedEventArgs e)
@@ -1172,7 +1186,7 @@ public partial class AgentWorkspaceView : UserControl
 
     private System.Windows.Shapes.Path CreateNexusVectorIcon(string pathData, string brushKey, System.Windows.Media.Brush fallbackBrush, double size = 14)
     {
-        return new System.Windows.Shapes.Path
+        var p = new System.Windows.Shapes.Path
         {
             Data = System.Windows.Media.Geometry.Parse(pathData),
             Fill = GetNexusThemeBrush(brushKey, fallbackBrush),
@@ -1182,11 +1196,16 @@ public partial class AgentWorkspaceView : UserControl
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center
         };
+        if (!string.IsNullOrWhiteSpace(brushKey) && !string.Equals(brushKey, "NexusAccentBrush", StringComparison.Ordinal))
+        {
+            p.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, brushKey);
+        }
+        return p;
     }
 
-    private System.Windows.Shapes.Path CreateNexusStrokeVectorIcon(string pathData, System.Windows.Media.Brush strokeBrush, double strokeThickness = 1.7, double size = 15)
+    private System.Windows.Shapes.Path CreateNexusStrokeVectorIcon(string pathData, System.Windows.Media.Brush strokeBrush, double strokeThickness = 1.7, double size = 15, string? strokeResourceKey = null)
     {
-        return new System.Windows.Shapes.Path
+        var p = new System.Windows.Shapes.Path
         {
             Data = System.Windows.Media.Geometry.Parse(pathData),
             Stroke = strokeBrush,
@@ -1201,6 +1220,15 @@ public partial class AgentWorkspaceView : UserControl
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center
         };
+        if (!string.IsNullOrWhiteSpace(strokeResourceKey))
+        {
+            p.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, strokeResourceKey);
+        }
+        else if (strokeBrush is System.Windows.Media.SolidColorBrush scb && scb.Color.G != 188)
+        {
+            p.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, scb.Color.R < 60 ? "DshTextPrimaryBrush" : "DshTextSecondaryBrush");
+        }
+        return p;
     }
 
     private static string GetAdGuardRootExtensionsDirectory()
@@ -1981,7 +2009,20 @@ public partial class AgentWorkspaceView : UserControl
             "  .row{flex-wrap:wrap;gap:10px;}" +
             "  .row > div:first-child{min-width:180px;flex:1;}" +
             "}" +
-            "</style></head><body>" +
+            "html.dark,body.dark{background:#1b1b1c;color:#f3f4f6;}" +
+            "body.dark .sidebar{background:#1b1b1c;border-color:#2c2c2e;}" +
+            "body.dark .brand,body.dark h1,body.dark h2,body.dark .row-title,body.dark .group-title,body.dark .h-title,body.dark .dl-name{color:#f3f4f6 !important;}" +
+            "body.dark .nav-item{color:#d1d5db;}" +
+            "body.dark .nav-item:hover{background:#252528;color:#ffffff;}" +
+            "body.dark .nav-item.active{background:#2c2c2e;color:#ffffff;}" +
+            "body.dark .nav-item.active::before{background:#4cc2ff;}" +
+            "body.dark .nav-sep,body.dark .row + .row,body.dark .h-row,body.dark .dl-row{border-color:#2e2e32;}" +
+            "body.dark .card,body.dark .group-card,body.dark .empty-card,body.dark .top-search,body.dark .btn-pill,body.dark .pill{background:#252528 !important;border-color:#38383d !important;color:#f3f4f6 !important;}" +
+            "body.dark .row-sub,body.dark .h-dom,body.dark .dl-sub,body.dark .h-time{color:#9ca3af !important;}" +
+            "body.dark .toggle-sw{background:#252528;border-color:#6b7280;}" +
+            "body.dark .toggle-sw.on{background:#4cc2ff;border-color:#4cc2ff;}" +
+            "body.dark .toggle-sw.on::after{background:#151517;}" +
+            "</style></head><body class=\"" + (Nexus.App.Services.ThemeManager.CurrentTheme == Nexus.App.Services.ThemeMode.Dark ? "dark" : "") + "\">" +
 
             // LEFT SIDEBAR (Clean, Monochrome, Only Real Working Sections)
             "<div class=\"sidebar\"><div>" +
@@ -2536,6 +2577,41 @@ public partial class AgentWorkspaceView : UserControl
         catch { }
     }
 
+    private async Task<string> CallLiveCdpMethodOnWebView2Async(string methodName, string parametersJson)
+    {
+        if (_activeWebView2Control is null || string.IsNullOrWhiteSpace(methodName))
+            return string.Empty;
+
+        try
+        {
+            async Task<string> RunCdpOnUiAsync()
+            {
+                var coreProp = _activeWebView2Control.GetType().GetProperty("CoreWebView2");
+                var coreWv = coreProp?.GetValue(_activeWebView2Control);
+                if (coreWv is null)
+                    return string.Empty;
+
+                var cdpMethod = coreWv.GetType().GetMethod("CallDevToolsProtocolMethodAsync", new Type[] { typeof(string), typeof(string) });
+                if (cdpMethod?.Invoke(coreWv, new object?[] { methodName, string.IsNullOrWhiteSpace(parametersJson) ? "{}" : parametersJson }) is Task<string> t)
+                {
+                    return await t ?? "{}";
+                }
+                return string.Empty;
+            }
+
+            if (!Dispatcher.CheckAccess())
+            {
+                var op = Dispatcher.InvokeAsync(RunCdpOnUiAsync);
+                return await await op.Task;
+            }
+            return await RunCdpOnUiAsync();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private async Task<string> ExecuteLiveScriptOnWebView2Async(string jsCode)
     {
         if (_activeWebView2Control is null || string.IsNullOrWhiteSpace(jsCode))
@@ -2979,13 +3055,13 @@ public partial class AgentWorkspaceView : UserControl
                 {
                     Height = 28,
                     CornerRadius = new System.Windows.CornerRadius(8),
-                    Background = isActive ? activeBg : inactiveBg,
-                    BorderBrush = borderSubtle,
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(8, 0, 6, 0),
                     Margin = new System.Windows.Thickness(0, 0, 6, 0),
                     Cursor = System.Windows.Input.Cursors.Hand
                 };
+                chipBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, isActive ? "DshCardBgBrush" : "DshSidebarBgBrush");
+                chipBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 var row = new System.Windows.Controls.StackPanel
                 {
                     Orientation = System.Windows.Controls.Orientation.Horizontal,
@@ -2997,16 +3073,17 @@ public partial class AgentWorkspaceView : UserControl
                     : CreateNexusStrokeVectorIcon("M 12,2 A 10,10 0 1 0 12,22 A 10,10 0 1 0 12,2 Z M 2,12 H 22 M 12,2 A 15.3,15.3 0 0 1 16,12 A 15.3,15.3 0 0 1 12,22 A 15.3,15.3 0 0 1 8,12 A 15.3,15.3 0 0 1 12,2 Z", textMuted, 1.4, 13);
                 row.Children.Add(ico);
 
+                var titleTb = new System.Windows.Controls.TextBlock
+                {
+                    Text = tab.Title.Length > 22 ? tab.Title[..22] + "…" : tab.Title,
+                    FontSize = 12,
+                    FontWeight = isActive ? System.Windows.FontWeights.SemiBold : System.Windows.FontWeights.Normal,
+                    Margin = new System.Windows.Thickness(6, 0, 6, 0)
+                };
+                titleTb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, isActive ? "DshTextPrimaryBrush" : "DshTextSecondaryBrush");
                 var titleBtn = new System.Windows.Controls.Button
                 {
-                    Content = new System.Windows.Controls.TextBlock
-                    {
-                        Text = tab.Title.Length > 22 ? tab.Title[..22] + "…" : tab.Title,
-                        FontSize = 12,
-                        FontWeight = isActive ? System.Windows.FontWeights.SemiBold : System.Windows.FontWeights.Normal,
-                        Foreground = isActive ? textDark : textMuted,
-                        Margin = new System.Windows.Thickness(6, 0, 6, 0)
-                    },
+                    Content = titleTb,
                     Background = System.Windows.Media.Brushes.Transparent,
                     Cursor = System.Windows.Input.Cursors.Hand
                 };
@@ -3339,16 +3416,19 @@ public partial class AgentWorkspaceView : UserControl
                 Foreground = mutedFg,
                 VerticalAlignment = System.Windows.VerticalAlignment.Center
             };
+            rTxt.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextSecondaryBrush");
             System.Windows.Controls.DockPanel.SetDock(rTxt, System.Windows.Controls.Dock.Right);
             dock.Children.Add(rTxt);
         }
-        dock.Children.Add(new System.Windows.Controls.TextBlock
+        var lblTxt = new System.Windows.Controls.TextBlock
         {
             Text = label,
             FontSize = 13,
             Foreground = fg,
             VerticalAlignment = System.Windows.VerticalAlignment.Center
-        });
+        };
+        lblTxt.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
+        dock.Children.Add(lblTxt);
         btn.Content = dock;
         return btn;
     }
@@ -3372,6 +3452,8 @@ public partial class AgentWorkspaceView : UserControl
                     Margin = new System.Windows.Thickness(0, 48, 0, 0),
                     Padding = new System.Windows.Thickness(14, 0, 10, 0)
                 };
+                _findInPageFloatingBar.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                _findInPageFloatingBar.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 System.Windows.Controls.Panel.SetZIndex(_findInPageFloatingBar, 95);
 
                 var dock = new System.Windows.Controls.DockPanel { LastChildFill = true };
@@ -3445,6 +3527,7 @@ public partial class AgentWorkspaceView : UserControl
         catch { }
 
         Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LiveJsEvaluator = ExecuteLiveScriptOnWebView2Async;
+        Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LiveCdpCaller = CallLiveCdpMethodOnWebView2Async;
         Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.ClearBrowserSessionHistoryAsync = ClearWebView2BrowsingHistoryAsync;
 
         if (_extensionsToolbarAttached) return;
@@ -3542,12 +3625,12 @@ public partial class AgentWorkspaceView : UserControl
                 {
                     Height = 36,
                     CornerRadius = new System.Windows.CornerRadius(18),
-                    Background = cardWhite,
-                    BorderBrush = borderSubtle,
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(6, 0, 6, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
+                navCapsuleBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                navCapsuleBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 var navStack = new System.Windows.Controls.StackPanel
                 {
                     Orientation = System.Windows.Controls.Orientation.Horizontal,
@@ -3660,22 +3743,24 @@ public partial class AgentWorkspaceView : UserControl
                 {
                     Height = 36,
                     CornerRadius = new System.Windows.CornerRadius(18),
-                    Background = bgSoftGray,
-                    BorderThickness = new System.Windows.Thickness(0),
+                    BorderThickness = new System.Windows.Thickness(1),
                     Margin = new System.Windows.Thickness(8, 0, 8, 0),
                     Padding = new System.Windows.Thickness(16, 0, 16, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
+                urlPillBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshSidebarBgBrush");
+                urlPillBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
+                addressBox.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "DshTextPrimaryBrush");
                 var urlInnerGrid = new System.Windows.Controls.Grid();
                 var urlPlaceholder = new System.Windows.Controls.TextBlock
                 {
                     Text = "Search or enter a URL",
                     FontSize = 13.5,
-                    Foreground = placeholderBrush,
                     HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment = System.Windows.VerticalAlignment.Center,
                     IsHitTestVisible = false
                 };
+                urlPlaceholder.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextTertiaryBrush");
                 void SyncUrlPlaceholderVisibility()
                 {
                     string t = (addressBox.Text ?? string.Empty).Trim();
@@ -3699,18 +3784,18 @@ public partial class AgentWorkspaceView : UserControl
                 System.Windows.Controls.Grid.SetColumn(urlPillBorder, 1);
                 modernToolbarGrid.Children.Add(urlPillBorder);
 
-                // COLUMN 2: White Capsule Pill [ 🛡️   🧩 ]
+                // COLUMN 2: Capsule Pill [ 🛡️   🧩 ]
                 var extCapsulePill = new System.Windows.Controls.Border
                 {
                     Height = 36,
                     CornerRadius = new System.Windows.CornerRadius(18),
-                    Background = cardWhite,
-                    BorderBrush = borderSubtle,
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(8, 0, 8, 0),
                     Margin = new System.Windows.Thickness(0, 0, 6, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
+                extCapsulePill.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                extCapsulePill.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
 
                 var extCapsuleStack = new System.Windows.Controls.StackPanel
                 {
@@ -3743,6 +3828,8 @@ public partial class AgentWorkspaceView : UserControl
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(0)
                 };
+                shieldPopupBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                shieldPopupBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
 
                 var shieldRootStack = new System.Windows.Controls.StackPanel();
                 var shieldHdr = new System.Windows.Controls.DockPanel { Margin = new System.Windows.Thickness(16, 12, 12, 8) };
@@ -4081,6 +4168,8 @@ public partial class AgentWorkspaceView : UserControl
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(8, 10, 8, 8)
                 };
+                extPopupBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                extPopupBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 var extStack = new System.Windows.Controls.StackPanel();
                 extStack.Children.Add(new System.Windows.Controls.TextBlock
                 {
@@ -4148,23 +4237,24 @@ public partial class AgentWorkspaceView : UserControl
                     Width = 36,
                     Height = 36,
                     CornerRadius = new System.Windows.CornerRadius(18),
-                    Background = cardWhite,
-                    BorderBrush = borderSubtle,
                     BorderThickness = new System.Windows.Thickness(1),
                     Margin = new System.Windows.Thickness(0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
+                moreMenuPillBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                moreMenuPillBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
 
+                var moreDotsTb = new System.Windows.Controls.TextBlock
+                {
+                    Text = "⋯",
+                    FontSize = 16,
+                    FontWeight = System.Windows.FontWeights.Bold,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+                moreDotsTb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
                 var moreMenuBtn = new System.Windows.Controls.Button
                 {
-                    Content = new System.Windows.Controls.TextBlock
-                    {
-                        Text = "⋯",
-                        FontSize = 16,
-                        FontWeight = System.Windows.FontWeights.Bold,
-                        Foreground = textDark,
-                        VerticalAlignment = System.Windows.VerticalAlignment.Center
-                    },
+                    Content = moreDotsTb,
                     Width = 34,
                     Height = 34,
                     Cursor = System.Windows.Input.Cursors.Hand,
@@ -4185,6 +4275,8 @@ public partial class AgentWorkspaceView : UserControl
                     BorderThickness = new System.Windows.Thickness(1),
                     Padding = new System.Windows.Thickness(8, 8, 8, 8)
                 };
+                morePopupBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                morePopupBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 var moreStack = new System.Windows.Controls.StackPanel();
 
                 var findBtn = CreateCleanMenuRowButton("Find in page", null, textDark, textMuted);
@@ -4215,6 +4307,8 @@ public partial class AgentWorkspaceView : UserControl
                     CornerRadius = new System.Windows.CornerRadius(8),
                     Padding = new System.Windows.Thickness(2, 1, 2, 1)
                 };
+                zoomPillBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshSidebarBgBrush");
+                zoomPillBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 var zoomPillStack = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
                 var zoomMinusBtn = new System.Windows.Controls.Button
                 {
@@ -4234,6 +4328,7 @@ public partial class AgentWorkspaceView : UserControl
                     VerticalAlignment = System.Windows.VerticalAlignment.Center,
                     Margin = new System.Windows.Thickness(8, 0, 8, 0)
                 };
+                _zoomPercentLabel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
                 var zoomPlusBtn = new System.Windows.Controls.Button
                 {
                     Content = new System.Windows.Controls.TextBlock { Text = "+", Foreground = textMuted, FontSize = 13 },
@@ -4277,13 +4372,15 @@ public partial class AgentWorkspaceView : UserControl
                 zoomRightStack.Children.Add(zoomResetBtn);
                 System.Windows.Controls.DockPanel.SetDock(zoomRightStack, System.Windows.Controls.Dock.Right);
                 zoomDock.Children.Add(zoomRightStack);
-                zoomDock.Children.Add(new System.Windows.Controls.TextBlock
+                var zoomTitleTb = new System.Windows.Controls.TextBlock
                 {
                     Text = "Zoom",
                     FontSize = 13,
                     Foreground = textDark,
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
-                });
+                };
+                zoomTitleTb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
+                zoomDock.Children.Add(zoomTitleTb);
                 moreStack.Children.Add(zoomDock);
 
                 moreStack.Children.Add(new System.Windows.Controls.Separator { Margin = new System.Windows.Thickness(6, 4, 6, 4) });
@@ -4934,7 +5031,7 @@ public partial class AgentWorkspaceView : UserControl
                         var extLinks = document.querySelectorAll('a[target=""_blank""], a[rel*=""nofollow"" i]');
                         for (var eIdx = 0; eIdx < extLinks.length; eIdx++) {
                             var extA = extLinks[eIdx];
-                            if (extA.closest('article, .post-item, .film-card, .hot-updates')) continue;
+                            if (extA.closest('article, main, [role=""main""], .post-item, [class*=""card"" i]')) continue;
                             var aHost = (extA.hostname || '').toLowerCase();
                             var bImg = extA.querySelector('img');
                             if (bImg && aHost && curHost && aHost !== curHost && aHost.indexOf(curHost) < 0) {

@@ -18,6 +18,7 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
 {
     private readonly AgentWorkspaceViewModel? _workspaceVm;
     private Func<string, Task<string>>? _scriptExecutor;
+    private Func<string, string, Task<string>>? _cdpCaller;
     private int _snapshotCounter;
     private string _currentSnapshotId = "snap-0000";
     private string _currentUrl = "about:blank";
@@ -35,13 +36,16 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
 
     public WebView2NativeAdapter(
         AgentWorkspaceViewModel? workspaceVm = null,
-        Func<string, Task<string>>? scriptExecutor = null)
+        Func<string, Task<string>>? scriptExecutor = null,
+        Func<string, string, Task<string>>? cdpCaller = null)
     {
         _workspaceVm = workspaceVm;
         _scriptExecutor = scriptExecutor;
+        _cdpCaller = cdpCaller;
     }
 
     public Func<string, Task<string>>? ScriptExecutor => _scriptExecutor;
+    public Func<string, string, Task<string>>? CdpCaller => _cdpCaller;
 
     public void SetScriptExecutorIfUnset(Func<string, Task<string>>? scriptExecutor)
     {
@@ -51,8 +55,19 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
         }
     }
 
+    public void SetCdpCallerIfUnset(Func<string, string, Task<string>>? cdpCaller)
+    {
+        if (_cdpCaller is null && cdpCaller is not null)
+        {
+            _cdpCaller = cdpCaller;
+        }
+    }
+
     private Func<string, Task<string>>? ResolveEffectiveScriptExecutor()
         => _scriptExecutor ?? BrowserAgentRuntimeSettings.Current.LiveJsEvaluator;
+
+    private Func<string, string, Task<string>>? ResolveEffectiveCdpCaller()
+        => _cdpCaller ?? BrowserAgentRuntimeSettings.Current.LiveCdpCaller;
 
     public void SyncLiveSnapshot(BrowserLiveStateSnapshot snapshot)
     {
@@ -235,7 +250,34 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
 
         if (!hasExplicitPageUrl)
         {
-            _currentUrl = !string.IsNullOrWhiteSpace(_workspaceVm?.LastBrowserUrl) ? _workspaceVm!.LastBrowserUrl : url;
+            if (BrowserAgentRuntimeSettings.Current.LiveJsEvaluator is { } liveNavEval)
+            {
+                try
+                {
+                    string probedHref = (await liveNavEval("(function(){ return location.href || ''; })()")).Trim().Trim('"');
+                    if (!string.IsNullOrWhiteSpace(probedHref) && probedHref.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _currentUrl = probedHref;
+                        if (_workspaceVm is not null) _workspaceVm.LastBrowserUrl = _currentUrl;
+                    }
+                    else
+                    {
+                        _currentUrl = !string.IsNullOrWhiteSpace(_workspaceVm?.LastBrowserUrl) ? _workspaceVm!.LastBrowserUrl : previousUrl;
+                    }
+                }
+                catch
+                {
+                    _currentUrl = !string.IsNullOrWhiteSpace(_workspaceVm?.LastBrowserUrl) ? _workspaceVm!.LastBrowserUrl : previousUrl;
+                }
+            }
+            else
+            {
+                _currentUrl = !string.IsNullOrWhiteSpace(_workspaceVm?.LastBrowserUrl) ? _workspaceVm!.LastBrowserUrl : previousUrl;
+                if (string.IsNullOrWhiteSpace(_currentUrl))
+                {
+                    _currentUrl = url;
+                }
+            }
         }
         else if (_workspaceVm is not null && !string.IsNullOrWhiteSpace(_currentUrl))
         {
@@ -501,19 +543,29 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                     $"Tindakan pada '{elem.Name}' membutuhkan konfirmasi pengguna: {confirmReason}", "CONFIRMATION_REQUIRED");
             }
 
-            // Batch 1A Single Execution Path: execute mutation once via JS bridge if attached, otherwise single navigation for link href
+            // Tahap 1 Native CDP + Batch 1A Single Execution Path:
+            // When effectiveCdp (CoreWebView2.CallDevToolsProtocolMethodAsync) is attached, prepare & validate coordinates via GetPrepareElementForCdpActionScript,
+            // then dispatch hardware-trusted Input.dispatchMouseEvent (mouseMoved -> mousePressed -> mouseReleased)!
             var effectiveJs = ResolveEffectiveScriptExecutor();
+            var effectiveCdp = ResolveEffectiveCdpCaller();
             int elemIdx = node?.Index ?? ParseElementIndex(elem.RefId);
             if (effectiveJs is not null && elemIdx > 0)
             {
-                string jsCode = BrowserUseDomEngine.GetExecuteElementActionScript(
-                    elemIdx,
-                    node?.XPath ?? string.Empty,
-                    "click",
-                    null,
-                    false,
-                    node?.TagName ?? elem.TagName,
-                    node?.Role ?? elem.Role);
+                string jsCode = effectiveCdp is not null
+                    ? BrowserUseDomEngine.GetPrepareElementForCdpActionScript(
+                        elemIdx,
+                        node?.XPath ?? string.Empty,
+                        "click",
+                        node?.TagName ?? elem.TagName,
+                        node?.Role ?? elem.Role)
+                    : BrowserUseDomEngine.GetExecuteElementActionScript(
+                        elemIdx,
+                        node?.XPath ?? string.Empty,
+                        "click",
+                        null,
+                        false,
+                        node?.TagName ?? elem.TagName,
+                        node?.Role ?? elem.Role);
 
                 bool canDirectNavigateLinkInLiveWebView2 = _scriptExecutor is null &&
                     _workspaceVm is not null &&
@@ -522,6 +574,8 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                     !string.Equals(resolvedHref.TrimEnd('/'), urlBefore.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
                     !resolvedHref.EndsWith("#", StringComparison.Ordinal);
 
+                double cdpCenterX = 0;
+                double cdpCenterY = 0;
                 string jsRes = await effectiveJs(jsCode);
                 if (!string.IsNullOrWhiteSpace(jsRes))
                 {
@@ -533,8 +587,6 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                             string err = doc.RootElement.TryGetProperty("error", out var ep)
                                 ? ep.GetString() ?? "JS_ACTION_FAILED"
                                 : "JS_ACTION_FAILED";
-                            // In live WebView2, if an <a href="https://..."> card link has a safety-verified resolvedHref
-                            // and synthetic JS click was blocked by a page overlay/CSS pseudo-layer, navigate directly under the same barrier lease!
                             if (!canDirectNavigateLinkInLiveWebView2 ||
                                 (err != "ELEMENT_COVERED_BY_OVERLAY" && err != "ELEMENT_NOT_VISIBLE"))
                             {
@@ -551,8 +603,23 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                             if (jsHref.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                                 resolvedHref = jsHref;
                         }
+                        if (doc.RootElement.TryGetProperty("centerX", out var cxProp) && cxProp.TryGetDouble(out double cxVal))
+                            cdpCenterX = cxVal;
+                        if (doc.RootElement.TryGetProperty("centerY", out var cyProp) && cyProp.TryGetDouble(out double cyVal))
+                            cdpCenterY = cyVal;
                     }
                     catch { }
+                }
+
+                if (effectiveCdp is not null)
+                {
+                    if (cdpCenterX <= 0) cdpCenterX = 120;
+                    if (cdpCenterY <= 0) cdpCenterY = 80;
+                    var (moveJson, pressJson, releaseJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(cdpCenterX, cdpCenterY);
+                    await effectiveCdp("Input.dispatchMouseEvent", moveJson);
+                    await effectiveCdp("Input.dispatchMouseEvent", pressJson);
+                    await effectiveCdp("Input.dispatchMouseEvent", releaseJson);
+                    BrowserAgentRuntimeSettings.Current.LastToolExecution = $"browser.click [CDP Input.dispatchMouseEvent @ ({cdpCenterX:F0},{cdpCenterY:F0})]";
                 }
 
                 if (!string.IsNullOrWhiteSpace(resolvedHref) && resolvedHref.StartsWith("http", StringComparison.OrdinalIgnoreCase))
@@ -719,27 +786,146 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                     false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId, reason, errCode);
             }
 
-            // Batch 1A Single Execution Path: execute input mutation once via JS bridge if attached
+            // Tahap 1 Native CDP + Batch 1A Single Execution Path:
+            // When effectiveCdp (CoreWebView2.CallDevToolsProtocolMethodAsync) is available:
+            // 1) Validate Freshness Guards, focus & clear existing text via GetPrepareElementForCdpActionScript,
+            // 2) Click center (centerX, centerY) via CDP Input.dispatchMouseEvent to place native caret,
+            // 3) Insert text via CDP Input.insertText (trusted by WhatsApp Lexical, YouTube Polymer, React),
+            // 4) Read-back DOM value via GetVerifyElementPostCdpInputScript,
+            // 5) If pressEnter is true, dispatch native Enter via CDP Input.dispatchKeyEvent!
             var effectiveJs = ResolveEffectiveScriptExecutor();
+            var effectiveCdp = ResolveEffectiveCdpCaller();
             int elemIdx = node?.Index ?? ParseElementIndex(elementRef);
             if (effectiveJs is not null && elemIdx > 0)
             {
-                string jsCode = BrowserUseDomEngine.GetExecuteElementActionScript(
-                    elemIdx,
-                    node?.XPath ?? string.Empty,
-                    "input",
-                    value,
-                    pressEnter,
-                    node?.TagName ?? elem.TagName,
-                    node?.Role ?? elem.Role);
-
-                string jsRes = await effectiveJs(jsCode);
-                if (!string.IsNullOrWhiteSpace(jsRes))
+                if (effectiveCdp is not null)
                 {
+                    string prepCode = BrowserUseDomEngine.GetPrepareElementForCdpActionScript(
+                        elemIdx,
+                        node?.XPath ?? string.Empty,
+                        "input",
+                        node?.TagName ?? elem.TagName,
+                        node?.Role ?? elem.Role);
+                    string prepRes;
+                    try
+                    {
+                        prepRes = await effectiveJs(prepCode);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal menyiapkan CDP 'fill' pada [{elementRef}]: {ex.Message}", "JS_EXECUTION_FAILED");
+                    }
+                    if (string.IsNullOrWhiteSpace(prepRes))
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal mengeksekusi 'fill' pada [{elementRef}]: respon JS kosong.", "JS_EMPTY_RESPONSE");
+                    }
+
+                    double cx = 120;
+                    double cy = 80;
+                    try
+                    {
+                        using var prepDoc = JsonDocument.Parse(prepRes);
+                        if (!prepDoc.RootElement.TryGetProperty("ok", out var okProp) || okProp.ValueKind != JsonValueKind.True)
+                        {
+                            string err = prepDoc.RootElement.TryGetProperty("error", out var ep)
+                                ? ep.GetString() ?? "JS_ACTION_FAILED"
+                                : "JS_ACTION_FAILED";
+                            return new BrowserActionOutcome(
+                                false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                                $"Gagal mengeksekusi 'fill' pada [{elementRef}]: {err}", err);
+                        }
+                        if (prepDoc.RootElement.TryGetProperty("centerX", out var cxp) && cxp.TryGetDouble(out double xVal) && xVal > 0) cx = xVal;
+                        if (prepDoc.RootElement.TryGetProperty("centerY", out var cyp) && cyp.TryGetDouble(out double yVal) && yVal > 0) cy = yVal;
+                    }
+                    catch (Exception ex)
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal memverifikasi respon persiapan CDP 'fill' pada [{elementRef}]: {ex.Message}", "JS_INVALID_JSON_RESPONSE");
+                    }
+
+                    // 1. Place native Chromium caret at (cx, cy) via CDP Input.dispatchMouseEvent
+                    var (moveJson, pressJson, releaseJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(cx, cy);
+                    await effectiveCdp("Input.dispatchMouseEvent", moveJson);
+                    await effectiveCdp("Input.dispatchMouseEvent", pressJson);
+                    await effectiveCdp("Input.dispatchMouseEvent", releaseJson);
+
+                    // 2. Insert text via CDP Input.insertText
+                    await effectiveCdp("Input.insertText", BrowserUseDomEngine.BuildCdpInsertTextJson(value));
+
+                    // 3. Read-back verification BEFORE pressing Enter (so form submit clearing the field never causes false mismatch)
+                    string verifyRes = await effectiveJs(BrowserUseDomEngine.GetVerifyElementPostCdpInputScript(elemIdx, value, pressEnter));
+                    if (string.IsNullOrWhiteSpace(verifyRes))
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal memverifikasi hasil CDP 'fill' pada [{elementRef}]: respon verifikasi kosong.", "JS_EMPTY_RESPONSE");
+                    }
+                    try
+                    {
+                        using var vDoc = JsonDocument.Parse(verifyRes);
+                        if (!vDoc.RootElement.TryGetProperty("ok", out var vOk) || vOk.ValueKind != JsonValueKind.True)
+                        {
+                            string err = vDoc.RootElement.TryGetProperty("error", out var vEp)
+                                ? vEp.GetString() ?? "INPUT_READBACK_MISMATCH"
+                                : "INPUT_READBACK_MISMATCH";
+                            return new BrowserActionOutcome(
+                                false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                                $"Gagal memverifikasi hasil ketikan CDP pada [{elementRef}]: {err}", err);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal membaca JSON verifikasi CDP 'fill' pada [{elementRef}]: {ex.Message}", "JS_INVALID_JSON_RESPONSE");
+                    }
+
+                    // 4. If pressEnter is true, dispatch native Enter via CDP Input.dispatchKeyEvent
+                    if (pressEnter)
+                    {
+                        var (kdJson, kuJson) = BrowserUseDomEngine.BuildCdpKeyEventsJson("Enter");
+                        await effectiveCdp("Input.dispatchKeyEvent", kdJson);
+                        await effectiveCdp("Input.dispatchKeyEvent", kuJson);
+                    }
+                    BrowserAgentRuntimeSettings.Current.LastToolExecution = $"browser.fill [CDP Input.insertText '{value}' (pressEnter={pressEnter})]";
+                }
+                else
+                {
+                    string jsCode = BrowserUseDomEngine.GetExecuteElementActionScript(
+                        elemIdx,
+                        node?.XPath ?? string.Empty,
+                        "input",
+                        value,
+                        pressEnter,
+                        node?.TagName ?? elem.TagName,
+                        node?.Role ?? elem.Role);
+
+                    string jsRes;
+                    try
+                    {
+                        jsRes = await effectiveJs(jsCode);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal mengeksekusi 'fill' pada [{elementRef}]: {ex.Message}", "JS_EXECUTION_FAILED");
+                    }
+                    if (string.IsNullOrWhiteSpace(jsRes))
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal mengeksekusi 'fill' pada [{elementRef}]: respon JS kosong (tidak ada bukti mutasi).", "JS_EMPTY_RESPONSE");
+                    }
                     try
                     {
                         using var doc = JsonDocument.Parse(jsRes);
-                        if (doc.RootElement.TryGetProperty("ok", out var okProp) && okProp.ValueKind == JsonValueKind.False)
+                        if (!doc.RootElement.TryGetProperty("ok", out var okProp) || okProp.ValueKind != JsonValueKind.True)
                         {
                             string err = doc.RootElement.TryGetProperty("error", out var ep)
                                 ? ep.GetString() ?? "JS_ACTION_FAILED"
@@ -749,7 +935,12 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                                 $"Gagal mengeksekusi 'fill' pada [{elementRef}]: {err}", err);
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        return new BrowserActionOutcome(
+                            false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal memverifikasi respon JS 'fill' pada [{elementRef}]: {ex.Message}", "JS_INVALID_JSON_RESPONSE");
+                    }
                 }
             }
 
@@ -770,18 +961,29 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                 }
                 catch { }
 
+                // Dismiss any leftover autocomplete dropdown in live WebView2 before checking URL transition
+                try
+                {
+                    await liveEval("(function(){ try { var pops = document.querySelectorAll('.ytSearchboxComponentSuggestionsContainer, ytd-searchbox [role=\"listbox\"], form [role=\"listbox\"], [role=\"search\"] [role=\"listbox\"], .sbdd_b, .gstl_50'); for(var i=0;i<pops.length;i++){ if(pops[i]&&pops[i].style) pops[i].style.display='none'; } if(document.activeElement && typeof document.activeElement.blur==='function') document.activeElement.blur(); } catch(e){} return 'OK'; })()");
+                }
+                catch { }
+
                 bool stillOnUnchangedRoot = string.Equals(liveHref.TrimEnd('/'), urlBefore.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
                 if (stillOnUnchangedRoot && Uri.TryCreate(urlBefore, UriKind.Absolute, out var baseUri))
                 {
                     string host = baseUri.Host.ToLowerInvariant();
-                    bool isSearchCapableSite = host.Contains("youtube.com") ||
-                                               host.Contains("google.") ||
-                                               host.Contains("bing.com") ||
-                                               host.Contains("duckduckgo.com") ||
-                                               host.Contains("wikipedia.org") ||
-                                               host.Contains("movieku") ||
-                                               host.Contains("lk21");
-                    if (isSearchCapableSite)
+                    bool isChatOrMessagingApp = host.Contains("whatsapp.com") ||
+                                                host.Contains("gemini.google") ||
+                                                host.Contains("chatgpt.com");
+                    bool isSearchField = string.Equals(elem.Role, "searchbox", StringComparison.OrdinalIgnoreCase) ||
+                                         string.Equals(elem.Role, "combobox", StringComparison.OrdinalIgnoreCase) ||
+                                         string.Equals(node?.InputType, "search", StringComparison.OrdinalIgnoreCase) ||
+                                         elem.Name.Contains("cari", StringComparison.OrdinalIgnoreCase) ||
+                                         elem.Name.Contains("search", StringComparison.OrdinalIgnoreCase) ||
+                                         elem.Name.Contains("telusuri", StringComparison.OrdinalIgnoreCase) ||
+                                         baseUri.PathAndQuery == "/" ||
+                                         string.IsNullOrEmpty(baseUri.PathAndQuery);
+                    if (!isChatOrMessagingApp && isSearchField)
                     {
                         string targetSearchUrl = DynamicReActControlLoop.BuildSiteSpecificSearchUrl(baseUri, value);
                         var submitNav = await NavigateCoreUnderLeaseAsync(targetSearchUrl, ct);
@@ -811,6 +1013,12 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                 }
             }
 
+            if (_workspaceVm is not null &&
+                !string.IsNullOrWhiteSpace(_workspaceVm.LastBrowserUrl) &&
+                !string.Equals(_workspaceVm.LastBrowserUrl, urlBefore, StringComparison.OrdinalIgnoreCase))
+            {
+                _currentUrl = _workspaceVm.LastBrowserUrl;
+            }
             BrowserAgentRuntimeSettings.Current.RecordLog($"browser.fill [{elementRef}] = '{value}' (pressEnter={pressEnter}, urlAfter={_currentUrl})");
             return new BrowserActionOutcome(
                 true, "browser.fill", urlBefore, _currentUrl, _currentTitle, _currentSnapshotId,
@@ -879,23 +1087,41 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                     node?.TagName ?? elem.TagName,
                     node?.Role ?? elem.Role);
 
-                string jsRes = await effectiveJs(jsCode);
-                if (!string.IsNullOrWhiteSpace(jsRes))
+                string jsRes;
+                try
                 {
-                    try
+                    jsRes = await effectiveJs(jsCode);
+                }
+                catch (Exception ex)
+                {
+                    return new BrowserActionOutcome(
+                        false, "browser.select", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                        $"Gagal memilih opsi '{optionValueOrText}' pada [{elementRef}]: {ex.Message}", "JS_EXECUTION_FAILED");
+                }
+                if (string.IsNullOrWhiteSpace(jsRes))
+                {
+                    return new BrowserActionOutcome(
+                        false, "browser.select", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                        $"Gagal memilih opsi '{optionValueOrText}' pada [{elementRef}]: respon JS kosong (tidak ada bukti mutasi).", "JS_EMPTY_RESPONSE");
+                }
+                try
+                {
+                    using var doc = JsonDocument.Parse(jsRes);
+                    if (!doc.RootElement.TryGetProperty("ok", out var okProp) || okProp.ValueKind != JsonValueKind.True)
                     {
-                        using var doc = JsonDocument.Parse(jsRes);
-                        if (doc.RootElement.TryGetProperty("ok", out var okProp) && okProp.ValueKind == JsonValueKind.False)
-                        {
-                            string err = doc.RootElement.TryGetProperty("error", out var ep)
-                                ? ep.GetString() ?? "JS_ACTION_FAILED"
-                                : "JS_ACTION_FAILED";
-                            return new BrowserActionOutcome(
-                                false, "browser.select", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
-                                $"Gagal memilih opsi '{optionValueOrText}' pada [{elementRef}]: {err}", err);
-                        }
+                        string err = doc.RootElement.TryGetProperty("error", out var ep)
+                            ? ep.GetString() ?? "JS_ACTION_FAILED"
+                            : "JS_ACTION_FAILED";
+                        return new BrowserActionOutcome(
+                            false, "browser.select", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                            $"Gagal memilih opsi '{optionValueOrText}' pada [{elementRef}]: {err}", err);
                     }
-                    catch { }
+                }
+                catch (Exception ex)
+                {
+                    return new BrowserActionOutcome(
+                        false, "browser.select", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                        $"Gagal memverifikasi respon JS 'select' pada [{elementRef}]: {ex.Message}", "JS_INVALID_JSON_RESPONSE");
                 }
             }
 
@@ -914,20 +1140,33 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
         using (barrierLease)
         {
             var effectiveJs = ResolveEffectiveScriptExecutor();
-            if (effectiveJs is not null)
+            if (effectiveJs is null)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.scroll", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    "Gagal menggulir halaman: bridge JavaScript tidak tersedia (unsupported).", "SCROLL_BRIDGE_UNAVAILABLE");
+            }
+
+            try
             {
                 if (string.Equals(direction, "to", StringComparison.OrdinalIgnoreCase))
                 {
                     int targetY = Math.Max(0, amountPx);
-                    try { await effectiveJs($"window.scrollTo(0, {targetY});"); } catch { }
+                    await effectiveJs($"window.scrollTo(0, {targetY});");
                 }
                 else
                 {
                     int delta = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase)
                         ? -Math.Abs(amountPx)
                         : Math.Abs(amountPx);
-                    try { await effectiveJs($"window.scrollBy({{ top: {delta}, behavior: 'smooth' }});"); } catch { }
+                    await effectiveJs($"window.scrollBy({{ top: {delta}, behavior: 'smooth' }});");
                 }
+            }
+            catch (Exception ex)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.scroll", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    $"Gagal mengeksekusi scroll di DOM: {ex.Message}", "JS_SCROLL_FAILED");
             }
 
             BrowserAgentRuntimeSettings.Current.RecordLog($"browser.scroll ({direction}, {amountPx}px)");
@@ -945,8 +1184,15 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
         using (barrierLease)
         {
             string safeKeys = string.IsNullOrWhiteSpace(keys) ? "Enter" : keys.Trim();
+            var effectiveCdp = ResolveEffectiveCdpCaller();
             var effectiveJs = ResolveEffectiveScriptExecutor();
-            if (effectiveJs is not null)
+            if (effectiveCdp is not null)
+            {
+                var (kdJson, kuJson) = BrowserUseDomEngine.BuildCdpKeyEventsJson(safeKeys);
+                await effectiveCdp("Input.dispatchKeyEvent", kdJson);
+                await effectiveCdp("Input.dispatchKeyEvent", kuJson);
+            }
+            else if (effectiveJs is not null)
             {
                 try { await effectiveJs(BrowserUseDomEngine.GetSendKeysScript(safeKeys)); } catch { }
             }
@@ -1595,7 +1841,10 @@ public sealed record AgentLoopExecutionSummary(
     IReadOnlyList<SearchResultCandidate> VerifiedSources,
     BrowserDownloadOutcome? DownloadedArtifact,
     WorkspaceFileAddOutcome? WorkspaceFileRegistered,
-    BrowserAgentBenchmarkRecord Benchmark);
+    BrowserAgentBenchmarkRecord Benchmark,
+    bool GoalVerified = false,
+    int ChecklistCompletedCount = 0,
+    int ChecklistTotalCount = 0);
 
 public sealed class AgentOrchestrator
 {

@@ -11,9 +11,9 @@
     <SolidColorBrush x:Key="NexusSurfaceRaised" Color="{StaticResource NexusPrimitiveColor252525}"/>
     <SolidColorBrush x:Key="NexusSurfaceOverlay" Color="{StaticResource NexusPrimitiveColor252525}"/>
     <SolidColorBrush x:Key="NexusBackdropOverlay" Color="{StaticResource NexusPrimitiveColor80000000}"/>
-    <SolidColorBrush x:Key="NexusOverlayButtonRest" Color="{StaticResource NexusPrimitiveColorCCFFFFFF}"/>
-    <SolidColorBrush x:Key="NexusOverlayButtonHover" Color="{StaticResource NexusPrimitiveColorE6FFFFFF}"/>
-    <SolidColorBrush x:Key="NexusOverlayButtonPressed" Color="{StaticResource NexusPrimitiveColorF2FFFFFF}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonRest" Color="{StaticResource NexusPrimitiveColor2C2C2E}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonHover" Color="{StaticResource NexusPrimitiveColor43454A}"/>
+    <SolidColorBrush x:Key="NexusOverlayButtonPressed" Color="{StaticResource NexusPrimitiveColor333333}"/>
     <SolidColorBrush x:Key="NexusSoftFolderBackground" Color="{StaticResource NexusPrimitiveColor1CF59E0B}"/>
     <SolidColorBrush x:Key="NexusSoftFolderBorder" Color="{StaticResource NexusPrimitiveColor40F59E0B}"/>
     <SolidColorBrush x:Key="NexusSoftFolderForeground" Color="{StaticResource NexusPrimitiveColorF59E0B}"/>

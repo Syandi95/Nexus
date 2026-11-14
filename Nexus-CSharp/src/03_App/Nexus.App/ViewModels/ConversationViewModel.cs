@@ -2955,7 +2955,27 @@ namespace Nexus.App.ViewModels
                                     {
                                         system_instruction = new { parts = new[] { new { text = systemPrompt } } },
                                         contents = new[] { new { role = "user", parts = new[] { new { text = userStatePrompt } } } },
-                                        generationConfig = new { temperature = 0.1, maxOutputTokens = 260, responseMimeType = "application/json" }
+                                        generationConfig = new
+                                        {
+                                            temperature = 0.1,
+                                            maxOutputTokens = 260,
+                                            responseMimeType = "application/json",
+                                            responseSchema = new
+                                            {
+                                                type = "OBJECT",
+                                                properties = new
+                                                {
+                                                    evaluation_previous_goal = new { type = "STRING" },
+                                                    memory = new { type = "STRING" },
+                                                    next_goal = new { type = "STRING" },
+                                                    action = new { type = "STRING" },
+                                                    element_index = new { type = "INTEGER", nullable = true },
+                                                    text_or_url = new { type = "STRING", nullable = true },
+                                                    press_enter = new { type = "BOOLEAN", nullable = true }
+                                                },
+                                                required = new[] { "evaluation_previous_goal", "memory", "next_goal", "action" }
+                                            }
+                                        }
                                     };
                                     using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, endpoint);
                                     req.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey.Trim());
@@ -2987,12 +3007,57 @@ namespace Nexus.App.ViewModels
             }
             catch { }
 
-            // 2. When Local CPU GGUF model is selected, avoid blocking the UI thread for 6-10s per step on CPU prompt ingestion;
-            // return immediately so the DOM-aware autonomous planner executes with 750ms visual bounding boxes and saves CPU for streaming the final answer.
-            if (_selectedModel?.Id?.StartsWith("cloud:", StringComparison.OrdinalIgnoreCase) != true)
+            // 2. Local GGUF / LlamaServer / Ollama Step Planner with benchmark-calibrated timeout (default 12.0s, clamped 8.0s..18.0s) & balanced JSON detection
+            var benchHist = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.BenchmarkHistory;
+            double calibratedTimeoutSec = 12.0;
+            if (benchHist.Count > 0)
             {
-                return string.Empty;
+                double avgStepMs = benchHist
+                    .Where(b => b.LocalModelTtftMs > 0 || b.BrowserActionLatencyMs > 0)
+                    .Select(b => Math.Max((double)b.LocalModelTtftMs, b.BrowserActionLatencyMs / Math.Max(1.0, b.ActionsExecuted)))
+                    .DefaultIfEmpty(4800.0)
+                    .Average();
+                calibratedTimeoutSec = Math.Clamp((avgStepMs * 2.5) / 1000.0, 8.0, 18.0);
             }
+            using var localStepCts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
+            localStepCts.CancelAfter(TimeSpan.FromSeconds(calibratedTimeoutSec));
+
+            if (_conversationRuntime.IsReady)
+            {
+                try
+                {
+                    var localMessages = new List<Nexus.AI.Llama.Models.ChatMessagePayload>
+                    {
+                        new Nexus.AI.Llama.Models.ChatMessagePayload { Role = "system", Content = systemPrompt },
+                        new Nexus.AI.Llama.Models.ChatMessagePayload { Role = "user", Content = userStatePrompt }
+                    };
+                    var sbLocal = new System.Text.StringBuilder();
+                    var genOpts = new Nexus.AI.Llama.Models.LlamaGenerationOptions { Temperature = 0.1f, TopP = 0.9f, TopK = 40, MinP = 0.05f };
+                    await foreach (var chunk in _conversationRuntime.StreamAsync(localMessages, false, genOpts, localStepCts.Token).WithCancellation(localStepCts.Token))
+                    {
+                        string piece = !string.IsNullOrEmpty(chunk.Content) ? chunk.Content : chunk.Delta;
+                        if (!string.IsNullOrEmpty(piece))
+                        {
+                            sbLocal.Append(piece);
+                            if (Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.HasCompleteBalancedJsonObject(sbLocal.ToString()))
+                                break;
+                        }
+                    }
+                    string streamed = sbLocal.ToString().Trim();
+                    if (!string.IsNullOrWhiteSpace(streamed))
+                        return streamed;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception localEx)
+                {
+                    Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.RecordLog(
+                        $"Local runtime step planner fallback: {localEx.GetType().Name}: {localEx.Message}");
+                }
+            }
+
             int[] localPorts = new[] { 8080, 8081, 11434 };
             foreach (int port in localPorts)
             {
@@ -3006,7 +3071,8 @@ namespace Nexus.App.ViewModels
                             new { role = "user", content = userStatePrompt }
                         },
                         temperature = 0.1,
-                        max_tokens = 240,
+                        max_tokens = 320,
+                        response_format = new { type = "json_object" },
                         stream = false
                     };
                     using var req = new System.Net.Http.HttpRequestMessage(
@@ -3018,10 +3084,10 @@ namespace Nexus.App.ViewModels
                             System.Text.Encoding.UTF8,
                             "application/json")
                     };
-                    using var resp = await _stepPlannerHttp.SendAsync(req, ct);
+                    using var resp = await _stepPlannerHttp.SendAsync(req, localStepCts.Token);
                     if (resp.IsSuccessStatusCode)
                     {
-                        string json = await resp.Content.ReadAsStringAsync(ct);
+                        string json = await resp.Content.ReadAsStringAsync(localStepCts.Token);
                         using var doc = System.Text.Json.JsonDocument.Parse(json);
                         if (doc.RootElement.TryGetProperty("choices", out var choices) &&
                             choices.GetArrayLength() > 0 &&
@@ -3031,6 +3097,10 @@ namespace Nexus.App.ViewModels
                             return contentProp.GetString() ?? string.Empty;
                         }
                     }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch { }
             }
@@ -3260,6 +3330,33 @@ namespace Nexus.App.ViewModels
         /// AI-First Task Normalizer & Tool Planner: lets the active LLM fix user typos (e.g. "pecarian", "guru gembru", "gubeneru sumsel")
         /// and structure any natural-language user instruction into a clean browser task before execution.
         /// </summary>
+        private static string FormatPlainTextReasoningDrawer(string? markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown))
+                return string.Empty;
+            var lines = new List<string>();
+            foreach (var rawLine in markdown.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
+            {
+                string line = rawLine.Trim();
+                if (line.StartsWith("### Kartu Sumber", StringComparison.OrdinalIgnoreCase) ||
+                    line.StartsWith("| ", StringComparison.Ordinal) ||
+                    line.StartsWith("|:", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (line.StartsWith(">", StringComparison.Ordinal))
+                {
+                    line = line.TrimStart('>').Trim();
+                }
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                line = System.Text.RegularExpressions.Regex.Replace(line, @"\[([^\]]+)\]\(([^)]+)\)", "$1 ($2)");
+                line = line.Replace("**", string.Empty).Replace("~~", string.Empty).Replace("`", string.Empty);
+                lines.Add(line);
+            }
+            return string.Join(Environment.NewLine, lines);
+        }
+
         private async Task<string> NormalizeUserTaskWithAiModelAsync(string rawUserTask, System.Threading.CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(rawUserTask))
@@ -3594,10 +3691,12 @@ namespace Nexus.App.ViewModels
                 }
 
                 UpdateAssistantBubbleLive(assistantMessage, stepLogHeader + outcome.StructuredReportMarkdown);
+                await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
             }
             catch (Exception ex)
             {
                 UpdateAssistantBubbleLive(assistantMessage, $"Terjadi kendala saat membaca folder/terminal PC: {ex.Message}");
+                await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
             }
             finally
             {
@@ -3749,6 +3848,7 @@ namespace Nexus.App.ViewModels
                         $"- **Sumber URL**: [{targetUrl}]({targetUrl})\r\n" +
                         $"- **Status Server**: {dlOutcome.Message}\r\n\r\n" +
                         $"Tautan telah dibuka secara langsung di **Browser Panel Kanan** agar pengunduh bawaan browser dapat menangani sesi tersebut.");
+                    await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
                     return;
                 }
 
@@ -3762,6 +3862,7 @@ namespace Nexus.App.ViewModels
                     $"- **SHA-256 Terverifikasi**: `{wfOutcome.Sha256Hex[..16]}...`\r\n" +
                     $"- **Sumber URL**: [{targetUrl}]({targetUrl})\r\n\r\n" +
                     $"Berkas fisik telah diverifikasi di disk dan otomatis dibuka pada tab **Files** di Panel Kanan.");
+                await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
             }
             catch (Exception ex)
             {
@@ -3818,20 +3919,35 @@ namespace Nexus.App.ViewModels
                         latestStepHeader = liveMarkdown;
                         try
                         {
-                            assistantMessage.ReasoningContent = liveMarkdown.Replace("> ", string.Empty);
+                            assistantMessage.ReasoningContent = FormatPlainTextReasoningDrawer(liveMarkdown);
                             assistantMessage.ThinkingDurationText = $"● Menjalankan langkah {Math.Min(liveUpdateTick, 12)} · {runSw.Elapsed.TotalSeconds:F1}s";
-                            assistantMessage.IsThinkingCollapsed = false;
+                            assistantMessage.IsThinkingCollapsed = true;
                         }
                         catch { }
                         UpdateAssistantBubbleLive(assistantMessage, liveMarkdown);
                         RefreshBrowserAgentTelemetryBindings();
                     },
-                    onUserApproval: (pendingReq, token) =>
+                    onUserApproval: async (pendingReq, token) =>
                     {
                         string approvalMsg = (assistantMessage.Content ?? string.Empty) +
                             $"\r\n\r\n**Konfirmasi Keamanan Diperlukan**: Agen meminta izin untuk mengeksekusi `{pendingReq.ActionName}` pada `{pendingReq.TargetDescription}` ({pendingReq.Reason}).";
                         UpdateAssistantBubbleLive(assistantMessage, approvalMsg);
-                        return Task.FromResult(false);
+                        try
+                        {
+                            var dialogService = (Application.Current as App)?.Services?.GetService(typeof(Nexus.App.Controls.ContentDialog.IContentDialogService)) as Nexus.App.Controls.ContentDialog.IContentDialogService;
+                            if (dialogService is not null)
+                            {
+                                var dialogRes = await Application.Current.Dispatcher.InvokeAsync(() =>
+                                    dialogService.ShowConfirmationAsync(
+                                        "Konfirmasi Aksi Sensitif Browser Agent",
+                                        $"Agen meminta izin untuk menjalankan aksi '{pendingReq.ActionName}' pada '{pendingReq.TargetDescription}'.\nAlasan: {pendingReq.Reason}",
+                                        "Izinkan",
+                                        "Tolak")).Task.Unwrap();
+                                return dialogRes == Nexus.App.Controls.ContentDialog.ContentDialogResult.Primary;
+                            }
+                        }
+                        catch { }
+                        return false;
                     },
                     ct: ct);
 
@@ -3839,8 +3955,12 @@ namespace Nexus.App.ViewModels
                 try
                 {
                     int actionsDone = Math.Max(1, summary.Benchmark.ActionsExecuted);
-                    assistantMessage.ReasoningContent = (latestStepHeader ?? string.Empty).Replace("> ", string.Empty);
-                    assistantMessage.ThinkingDurationText = $"✓ Ran {actionsDone} browser actions · {actionsDone} done · {Math.Max(0.8, runSw.Elapsed.TotalSeconds):F1}s";
+                    int stepsDone = summary.ChecklistCompletedCount;
+                    int stepsTotal = Math.Max(1, summary.ChecklistTotalCount);
+                    string statusPrefix = summary.IsSuccess ? "✓" : "⚠";
+                    string statusVerb = summary.IsSuccess ? "done" : "berhenti prematur";
+                    assistantMessage.ReasoningContent = FormatPlainTextReasoningDrawer(summary.FinalGroundedReportMarkdown);
+                    assistantMessage.ThinkingDurationText = $"{statusPrefix} Ran {actionsDone} browser actions · {stepsDone}/{stepsTotal} {statusVerb} · {Math.Max(0.8, runSw.Elapsed.TotalSeconds):F1}s";
                     assistantMessage.IsThinkingCollapsed = true;
                 }
                 catch { }
@@ -3851,9 +3971,12 @@ namespace Nexus.App.ViewModels
                     _lastSessionCandidates.AddRange(summary.VerifiedSources);
                 }
 
-                // Always stream the active AI model's final synthesis/report whenever a Cloud or Local model is ready!
+                bool wantsTextSynthesis = System.Text.RegularExpressions.Regex.IsMatch(
+                    userTask ?? string.Empty,
+                    @"\b(rangkum|ringkas|jelaskan|siapa|apa\s+itu|berapa|resep|cara\s+membuat|analisis|kesimpulan)\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 bool canStreamModel = (_selectedModel?.Id?.StartsWith("cloud:", StringComparison.OrdinalIgnoreCase) == true) || _conversationRuntime.IsReady;
-                if (canStreamModel && summary.IsSuccess)
+                if (canStreamModel && summary.IsSuccess && wantsTextSynthesis)
                 {
                     // Keep the checklist inside the collapsible header (ReasoningContent / "✓ Ran N browser actions · N done")
                     // and keep Content clean for the AI model's final synthesis (matching image_29415f.jpg 1:1)!
@@ -3892,11 +4015,13 @@ namespace Nexus.App.ViewModels
                 }
 
                 UpdateAssistantBubbleLive(assistantMessage, summary.FinalGroundedReportMarkdown, isStreaming: false);
+                await PersistInstantExchangeAsync(userTask, assistantMessage.Content ?? string.Empty);
                 return summary;
             }
             catch (Exception ex)
             {
                 UpdateAssistantBubbleLive(assistantMessage, $"Terjadi kendala saat menjalankan Browser Agent: {ex.Message}", isStreaming: false);
+                await PersistInstantExchangeAsync(userTask, assistantMessage.Content ?? string.Empty);
                 return new Nexus.App.Services.BrowserAgent.AgentLoopExecutionSummary(
                     false,
                     assistantMessage.Content ?? string.Empty,
@@ -3942,6 +4067,7 @@ namespace Nexus.App.ViewModels
                         assistantMessage,
                         $"Halaman **[Google Scholar]({targetUrl})** telah dibuka di tab **Browser** pada Panel Kanan.\r\n\r\n" +
                         "Silakan ketik topik makalah atau jurnal yang ingin Anda cari.");
+                    await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
                     return;
                 }
 
@@ -3990,6 +4116,7 @@ namespace Nexus.App.ViewModels
                 }
 
                 UpdateAssistantBubbleLive(assistantMessage, summary.FinalGroundedReportMarkdown, isStreaming: false);
+                await PersistInstantExchangeAsync(userPrompt, assistantMessage.Content ?? string.Empty);
             }
             catch (Exception ex)
             {
@@ -4733,9 +4860,27 @@ namespace Nexus.App.ViewModels
 
         private static string GetHermesMemoryDirectory()
         {
-            string dir = Path.Combine(AppContext.BaseDirectory, "nexus_data", "memory");
-            Directory.CreateDirectory(dir);
-            return dir;
+            string baseDir = Path.Combine(AppContext.BaseDirectory, "nexus_data", "memory");
+            if (Directory.Exists(@"D:\NEXUS"))
+            {
+                string persistentDir = @"D:\NEXUS\nexus_data\memory";
+                Directory.CreateDirectory(persistentDir);
+                try
+                {
+                    if (Directory.Exists(baseDir))
+                    {
+                        foreach (var f in Directory.GetFiles(baseDir, "*.md"))
+                        {
+                            string dst = Path.Combine(persistentDir, Path.GetFileName(f));
+                            if (!File.Exists(dst)) File.Copy(f, dst);
+                        }
+                    }
+                }
+                catch { }
+                return persistentDir;
+            }
+            Directory.CreateDirectory(baseDir);
+            return baseDir;
         }
 
         private static string GetHermesUserMdPath() => Path.Combine(GetHermesMemoryDirectory(), "USER.md");
@@ -4988,9 +5133,25 @@ namespace Nexus.App.ViewModels
 
         private static string GetHybridProviderConfigPath()
         {
+            string baseFile = Path.Combine(AppContext.BaseDirectory, "nexus_data", "ai_providers.json");
+            if (Directory.Exists(@"D:\NEXUS"))
+            {
+                string persistentDir = @"D:\NEXUS\nexus_data";
+                Directory.CreateDirectory(persistentDir);
+                string persistentFile = Path.Combine(persistentDir, "ai_providers.json");
+                try
+                {
+                    if (File.Exists(baseFile) && !File.Exists(persistentFile))
+                    {
+                        File.Copy(baseFile, persistentFile);
+                    }
+                }
+                catch { }
+                return persistentFile;
+            }
             string dir = Path.Combine(AppContext.BaseDirectory, "nexus_data");
             Directory.CreateDirectory(dir);
-            return Path.Combine(dir, "ai_providers.json");
+            return baseFile;
         }
 
         private static string EncryptSecretMachineBound(string plainText)
@@ -7162,8 +7323,18 @@ namespace Nexus.App.ViewModels
                 }
                 await _conversationManager.AddMessageAsync("user", userPrompt);
                 await _conversationManager.AddMessageAsync("assistant", assistantReply);
+                var active = _conversationManager.ActiveConversation;
+                if (active != null &&
+                    (string.IsNullOrWhiteSpace(active.Title) ||
+                     string.Equals(active.Title, "New Conversation", StringComparison.OrdinalIgnoreCase)) &&
+                    !string.IsNullOrWhiteSpace(userPrompt))
+                {
+                    string cleanTitle = userPrompt.Trim().Replace("\r", " ").Replace("\n", " ");
+                    if (cleanTitle.Length > 48) cleanTitle = cleanTitle[..48].Trim() + "...";
+                    await _conversationManager.RenameAsync(active.Id, cleanTitle);
+                }
                 AutoLearnAndCurateHermesMemory(userPrompt, assistantReply, "local-tool");
-                RefreshSavedConversationSummary();
+                await InvokeOnUiDispatcherAsync(RefreshSavedConversationSummary);
             }
             catch { }
         }

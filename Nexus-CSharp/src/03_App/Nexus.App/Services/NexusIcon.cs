@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -43,6 +43,8 @@ namespace Nexus.App.Services
             { "Cut", "\uF33B" },
             { "Undo", "\uF19A" },
             { "Redo", "\uF16F" },
+            { "RotateLeft", "\uF19A" },
+            { "RotateRight", "\uF16F" },
             { "Brush", "\uF593" },
             { "Eraser", "\uF3EF" },
             { "Clean", "\uF202" },
@@ -91,6 +93,7 @@ namespace Nexus.App.Services
             { "Upload", "\uF1A5" },
             { "Print", "\uF62B" },
             { "Zoom", "\uF8C5" },
+            { "ZoomIn", "\uF8C5" },
             { "ZoomOut", "\uF8C7" },
             { "Camera", "\uF255" },
             { "Lock", "\uE790" },

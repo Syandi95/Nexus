@@ -44,6 +44,11 @@ namespace Nexus.App.Views
         {
             InitializeComponent();
             DataContextChanged += ImageSubsystemView_DataContextChanged;
+            Loaded += (_, _) =>
+            {
+                if (DataContext is ImageSubsystemViewModel vm)
+                    SyncCanvasBackgroundState(vm);
+            };
             ImgRemoveBackgroundBefore.SizeChanged += (_, _) => InvokePreviewGeometrySync();
         }
 
@@ -90,6 +95,7 @@ namespace Nexus.App.Views
                 newVm.RedoMaskAction = RedoStroke;
                 newVm.ClearMaskAction = ClearStrokes;
                 UpdateBrushAttributes();
+                SyncCanvasBackgroundState(newVm);
             }
             else if (e.NewValue is INotifyPropertyChanged genericVm)
             {
@@ -153,34 +159,14 @@ namespace Nexus.App.Views
 
             if (e.PropertyName == nameof(ImageSubsystemViewModel.SelectedMode) && DataContext is ImageSubsystemViewModel vm2)
             {
-                if (vm2.IsRemoveBgMode)
-                {
-                    RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "RemoveBackgroundCheckerboardBrush");
-                    CanvasBackgroundComboBox_SelectionChanged(null, null);
-                }
-                else
-                {
-                    RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceSecondaryBrush");
-                    if (vm2.IsImageLoaded)
-                    {
-                        RemoveBackgroundAfterSurface.Background = Brushes.White;
-                    }
-                }
+                SyncCanvasBackgroundState(vm2);
                 SyncPreviewGeometry();
                 return;
             }
 
             if (e.PropertyName == nameof(ImageSubsystemViewModel.IsImageLoaded) && DataContext is ImageSubsystemViewModel vm3)
             {
-                if (vm3.IsImageLoaded && vm3.IsUpscaleMode)
-                    RemoveBackgroundAfterSurface.Background = Brushes.White;
-                if (!vm3.IsImageLoaded)
-                {
-                    if (vm3.IsRemoveBgMode)
-                        RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "RemoveBackgroundCheckerboardBrush");
-                    else
-                        RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceSecondaryBrush");
-                }
+                SyncCanvasBackgroundState(vm3);
                 return;
             }
 
@@ -559,8 +545,28 @@ namespace Nexus.App.Views
             }
         }
 
-        private void CanvasBackgroundComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
+        public void SyncCanvasBackgroundState(ImageSubsystemViewModel vm)
         {
+            if (vm.IsRemoveBgMode)
+            {
+                RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "RemoveBackgroundCheckerboardBrush");
+                ApplyCanvasBackgroundSelection();
+            }
+            else
+            {
+                RemoveBackgroundDropZone.SetResourceReference(Border.BackgroundProperty, "SurfaceSecondaryBrush");
+                RemoveBackgroundAfterSurface.Background = Brushes.White;
+            }
+        }
+
+        private void ApplyCanvasBackgroundSelection()
+        {
+            if (CanvasBackgroundComboBox == null)
+            {
+                RemoveBackgroundAfterSurface.SetResourceReference(Border.BackgroundProperty, "RemoveBackgroundCheckerboardBrush");
+                return;
+            }
+
             if (CanvasBackgroundComboBox.SelectedIndex == 1)
             {
                 RemoveBackgroundAfterSurface.Background = Brushes.White;
@@ -573,6 +579,16 @@ namespace Nexus.App.Views
             {
                 RemoveBackgroundAfterSurface.SetResourceReference(Border.BackgroundProperty, "RemoveBackgroundCheckerboardBrush");
             }
+        }
+
+        private void CanvasBackgroundComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs? e)
+        {
+            if (DataContext is ImageSubsystemViewModel vm && !vm.IsRemoveBgMode)
+            {
+                RemoveBackgroundAfterSurface.Background = Brushes.White;
+                return;
+            }
+            ApplyCanvasBackgroundSelection();
         }
 
         private void Preview_MouseDown(object sender, MouseButtonEventArgs e)

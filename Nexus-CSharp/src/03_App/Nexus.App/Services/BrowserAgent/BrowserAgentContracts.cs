@@ -37,6 +37,7 @@ public sealed class BrowserAgentRuntimeSettings
 
     // Live Bridges to WebView2 UI Thread & Active LLM StepPlanner (v23)
     public Func<string, Task<string>>? LiveJsEvaluator { get; set; }
+    public Func<string, string, Task<string>>? LiveCdpCaller { get; set; }
     public Func<string, string, CancellationToken, Task<string>>? LiveLlmStepPlannerCaller { get; set; }
     public Action<string>? OpenUrlInRightPanelBrowser { get; set; }
     public Func<bool, Task>? ClearBrowserSessionHistoryAsync { get; set; }

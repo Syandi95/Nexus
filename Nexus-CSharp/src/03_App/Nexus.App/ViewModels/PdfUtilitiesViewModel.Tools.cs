@@ -1,14 +1,28 @@
-﻿using System.Windows.Input;
+using System.Windows.Input;
+using System.Windows.Media;
 using Nexus.App.Controls.InfoBar;
 
 namespace Nexus.App.ViewModels;
 
 public partial class PdfUtilitiesViewModel
 {
+    private static readonly Geometry DefaultReaderPageGeometry = CreateFrozenGeometry("M 7,2 H 15 L 19,6 V 18 H 7 Z M 15,2 V 6 H 19 M 4,5 V 21 H 16");
+    private static Geometry CreateFrozenGeometry(string data)
+    {
+        var g = Geometry.Parse(data);
+        g.Freeze();
+        return g;
+    }
+
     internal event Action<PdfUtilitiesViewModel,PdfToolId>? ToolRequested;
     public bool IsReaderWorkspace => !HasSelectedTool;
     public string WorkspaceGlyph => SelectedTool?.Glyph??"PDFPage";
     public string WorkspaceBadge => SelectedTool?.Badge??"";
+    public bool HasWorkspaceBadge => !string.IsNullOrWhiteSpace(WorkspaceBadge);
+    public bool IsConversionToolWorkspace => SelectedTool?.IsConversionTool == true;
+    public bool IsEditToolWorkspace => SelectedTool?.IsEditTool == true;
+    public Brush WorkspaceAccentBrush => SelectedTool?.AccentBrush ?? PdfToolDefinition.PdfReaderRedBrush;
+    public Geometry WorkspaceIconGeometry => SelectedTool?.IconGeometry ?? DefaultReaderPageGeometry;
     private PdfToolDefinition? _selectedTool;
     private bool _convertFromExpanded=true,_editExpanded=true,_convertToExpanded=true;
     public bool IsConvertFromExpanded { get=>_convertFromExpanded;set=>SetProperty(ref _convertFromExpanded,value); }
@@ -33,7 +47,7 @@ public partial class PdfUtilitiesViewModel
             if(!SetProperty(ref _selectedTool,value)) return;
             IsSettingsVisible=true;
             IsDocumentView=value==null;
-            foreach(var name in new[]{nameof(HasSelectedTool),nameof(IsImageToolSelected),nameof(IsPageImageMode),nameof(SelectedToolSettings),nameof(CanConvert),nameof(ConvertButtonText),nameof(RightPanelWidth),nameof(SettingsToggleText),nameof(IsReaderWorkspace),nameof(WorkspaceTitle),nameof(WorkspaceGlyph),nameof(WorkspaceBadge)}) OnPropertyChanged(name);
+            foreach(var name in new[]{nameof(HasSelectedTool),nameof(IsImageToolSelected),nameof(IsPageImageMode),nameof(SelectedToolSettings),nameof(CanConvert),nameof(ConvertButtonText),nameof(RightPanelWidth),nameof(SettingsToggleText),nameof(IsReaderWorkspace),nameof(WorkspaceTitle),nameof(WorkspaceGlyph),nameof(WorkspaceBadge),nameof(HasWorkspaceBadge),nameof(IsConversionToolWorkspace),nameof(IsEditToolWorkspace),nameof(WorkspaceAccentBrush),nameof(WorkspaceIconGeometry)}) OnPropertyChanged(name);
             CommandManager.InvalidateRequerySuggested();
         }
     }

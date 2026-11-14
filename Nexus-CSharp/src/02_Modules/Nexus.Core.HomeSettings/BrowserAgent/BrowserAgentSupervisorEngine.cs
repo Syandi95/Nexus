@@ -116,7 +116,16 @@ public sealed class BrowserUseActionLoopDetector
 
 public static class GgufModelTokenizer
 {
-    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromSeconds(3) };
+    private static readonly HttpClient SharedHttp = new(new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromMilliseconds(180)
+    })
+    {
+        Timeout = TimeSpan.FromMilliseconds(450)
+    };
+
+    private static int _lastWorkingPort;
+    private static long _allPortsOfflineUntilTicks;
 
     public static async Task<(int TokenCount, string Source)> CountTokensAsync(
         string? text,
@@ -126,35 +135,47 @@ public static class GgufModelTokenizer
         if (string.IsNullOrEmpty(text))
             return (0, "empty");
 
-        // Try active GGUF model's native /tokenize endpoint on llama-server.exe first (Syarat F)
-        int[] candidatePorts = new[] { llamaServerPort, 8080, 8081, 11434 };
-        foreach (int port in candidatePorts.Distinct())
+        long nowTicks = DateTimeOffset.UtcNow.UtcTicks;
+        if (nowTicks >= Interlocked.Read(ref _allPortsOfflineUntilTicks))
         {
-            try
+            int cachedPort = Volatile.Read(ref _lastWorkingPort);
+            int[] candidatePorts = cachedPort > 0
+                ? new[] { cachedPort, llamaServerPort, 8080, 8081, 11434 }
+                : new[] { llamaServerPort, 8080, 8081, 11434 };
+
+            foreach (int port in candidatePorts.Distinct())
             {
-                string payload = JsonSerializer.Serialize(new { content = text });
-                using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/tokenize")
+                try
                 {
-                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
-                };
-                using var resp = await SharedHttp.SendAsync(req, ct);
-                if (resp.IsSuccessStatusCode)
-                {
-                    string json = await resp.Content.ReadAsStringAsync(ct);
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("tokens", out var tokArr) && tokArr.ValueKind == JsonValueKind.Array)
+                    string payload = JsonSerializer.Serialize(new { content = text });
+                    using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/tokenize")
                     {
-                        return (tokArr.GetArrayLength(), $"gguf-llama-server:{port}");
+                        Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                    };
+                    using var resp = await SharedHttp.SendAsync(req, ct);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        string json = await resp.Content.ReadAsStringAsync(ct);
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("tokens", out var tokArr) && tokArr.ValueKind == JsonValueKind.Array)
+                        {
+                            Volatile.Write(ref _lastWorkingPort, port);
+                            return (tokArr.GetArrayLength(), $"gguf-llama-server:{port}");
+                        }
                     }
                 }
+                catch
+                {
+                    // Server not listening on this port; try next
+                }
             }
-            catch
-            {
-                // Server not listening on this port; try next
-            }
+
+            // Cache offline state for 30s so Windows TCP SYN timeouts never stall browser completion or test suites
+            Volatile.Write(ref _lastWorkingPort, 0);
+            Interlocked.Exchange(ref _allPortsOfflineUntilTicks, DateTimeOffset.UtcNow.AddSeconds(30).UtcTicks);
         }
 
-        // Deterministic SentencePiece/WordPiece subword tokenizer fallback when llama-server process is offline in unit tests
+        // Deterministic SentencePiece/WordPiece subword tokenizer fallback when llama-server process is offline
         int subwordTokens = EstimateSentencePieceSubwords(text);
         return (subwordTokens, "gguf-sentencepiece-estimator");
     }
@@ -507,7 +528,7 @@ public sealed class AgentTaskChecklistContract
         // Strip trailing sub-item selection, playback, wait, ad-skip, or seek instructions
         q = Regex.Replace(
             q,
-            @"\s+(?:memilih\s+bagian\b.*|pilih\s+bagian\b.*|klik\s+bagian\b.*|buka\s+bagian\b.*|pilih\s+episode\b.*|klik\s+episode\b.*|memilih\s+episode\b.*|play\b.*|putar\b.*|mainkan\b.*|tonton\b.*|tunggu\s+(?:hingga|sampai|sebentar|beberapa).*|hingga\s+muncul.*|sampai\s+muncul.*|klik\s+lewati.*|lewati\s+iklan.*|klik\s+videonya.*|ke\s+menit\s+\d+.*|di\s+menit\s+\d+.*|dan\s+klik.*|lalu\s+klik.*|dan\s+play\b.*|lalu\s+play\b.*)$",
+            @"\s*(?:,\s*)?(?:memilih\s+bagian\b.*|pilih\s+bagian\b.*|klik\s+bagian\b.*|buka\s+bagian\b.*|pilih\s+episode\b.*|klik\s+episode\b.*|memilih\s+episode\b.*|pilih\s+video\b.*|klik\s+video\b.*|video\s+paling\s+atas\b.*|yang\s+paling\s+atas\b.*|di\s+(?:kolom\s+|kotak\s+)?(?:pencarian|pecarian|telusuri)\b.*|play\b.*|putar\b.*|mainkan\b.*|tonton\b.*|tunggu\s+(?:hingga|sampai|sebentar|beberapa).*|hingga\s+muncul.*|sampai\s+muncul.*|klik\s+lewati.*|lewati\s+iklan.*|klik\s+videonya.*|ke\s+menit\s+\d+.*|di\s+menit\s+\d+.*|dan\s+klik.*|lalu\s+klik.*|dan\s+play\b.*|lalu\s+play\b.*)$",
             string.Empty,
             RegexOptions.IgnoreCase).Trim();
 
@@ -726,9 +747,8 @@ public sealed class AgentTaskChecklistContract
                 !string.IsNullOrWhiteSpace(curUrl) &&
                 !string.IsNullOrWhiteSpace(targetUrlOrText) &&
                 IsSameRootHost(curUrl, targetUrlOrText!) &&
-                !targetUrlOrText!.Contains("watch?v=", StringComparison.OrdinalIgnoreCase) &&
-                !targetUrlOrText.Contains("search_query=", StringComparison.OrdinalIgnoreCase) &&
-                !targetUrlOrText.Contains("/?s=", StringComparison.OrdinalIgnoreCase))
+                Uri.TryCreate(targetUrlOrText, UriKind.Absolute, out var dupTargetUri) &&
+                (string.IsNullOrEmpty(dupTargetUri.PathAndQuery) || dupTargetUri.PathAndQuery == "/"))
             {
                 if (inputStep is { Status: ChecklistStepStatus.Pending or ChecklistStepStatus.Running })
                 {
@@ -840,7 +860,7 @@ public sealed class AgentTaskChecklistContract
 
     /// <summary>
     /// Renders the sleek OpenBot-main (openbot.run) Checklist Card (with strikethrough completed items like TodoCard in coding-tool-cards.tsx)
-    /// and the verified Source/Media Card without any duplicate bullet wall or bogus about---blank items.
+    /// and the verified Source/Media Card without any duplicate bullet wall or malformed host items.
     /// </summary>
     public string FormatOpenBotLiveChecklistCardMarkdown(
         string? activeUrl = null,
@@ -855,11 +875,13 @@ public sealed class AgentTaskChecklistContract
             ? $"NEXUS Browser Agent · \"{CleanSearchTopic}\""
             : "NEXUS Browser Agent · Eksekusi Otomatis";
 
-        string badge = isFinished || completedCount >= totalCount
+        bool stoppedPrematurely = isFinished && completedCount < totalCount;
+        string headerIcon = stoppedPrematurely ? "⚠" : "✓";
+        string badge = completedCount >= totalCount
             ? $"`{completedCount}/{totalCount} selesai ✓`"
-            : $"`{completedCount}/{totalCount} berjalan ●`";
+            : (stoppedPrematurely ? $"`⚠ {completedCount}/{totalCount} berhenti prematur`" : $"`{completedCount}/{totalCount} berjalan ●`");
 
-        sb.AppendLine($"> **✓ {taskTitle}** · {badge}");
+        sb.AppendLine($"> **{headerIcon} {taskTitle}** · {badge}");
         sb.AppendLine(">");
 
         foreach (var step in Steps)
@@ -870,28 +892,25 @@ public sealed class AgentTaskChecklistContract
             }
             else if (step.Status == ChecklistStepStatus.Completed)
             {
-                string linkPart = !string.IsNullOrWhiteSpace(step.VerifiedUrl) &&
-                                  !step.VerifiedUrl.Contains("about:blank", StringComparison.OrdinalIgnoreCase) &&
-                                  !step.VerifiedUrl.Contains("about---blank", StringComparison.OrdinalIgnoreCase)
+                string linkPart = BrowserUseDomEngine.IsValidNavigatingOrSourceUrl(step.VerifiedUrl)
                     ? $" · [Buka]({step.VerifiedUrl})"
                     : string.Empty;
                 sb.AppendLine($"> ✓ ~~{step.Description}~~{linkPart}");
             }
             else if (step.Status == ChecklistStepStatus.Running)
             {
-                sb.AppendLine($"> ● **{step.Description}** *(sedang dikerjakan...)*");
+                string runSuffix = isFinished ? "*(belum tercapai — berhenti prematur)*" : "*(sedang dikerjakan...)*";
+                sb.AppendLine($"> {(isFinished ? "⚠" : "●")} **{step.Description}** {runSuffix}");
             }
             else
             {
-                sb.AppendLine($"> ○ {step.Description}");
+                string pendSuffix = isFinished ? " *(belum dijalankan)*" : string.Empty;
+                sb.AppendLine($"> ○ {step.Description}{pendSuffix}");
             }
         }
 
         if (primarySource is not null &&
-            !string.IsNullOrWhiteSpace(primarySource.Url) &&
-            !primarySource.Url.Contains("about:blank", StringComparison.OrdinalIgnoreCase) &&
-            !primarySource.Url.Contains("about---blank", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(primarySource.Title, "Outerwear", StringComparison.OrdinalIgnoreCase))
+            BrowserUseDomEngine.IsValidNavigatingOrSourceUrl(primarySource.Url))
         {
             string domain = "Web";
             if (Uri.TryCreate(primarySource.Url, UriKind.Absolute, out var u))
@@ -1003,7 +1022,7 @@ public static class OpenBotWebUiChatSurfaceBuilder
             sb.AppendLine("</details>");
         }
 
-        if (primarySource is not null && !string.IsNullOrWhiteSpace(primarySource.Url) && !primarySource.Url.Contains("about---blank", StringComparison.OrdinalIgnoreCase))
+        if (primarySource is not null && BrowserUseDomEngine.IsValidNavigatingOrSourceUrl(primarySource.Url))
         {
             sb.AppendLine($"<div class=\"src-card\"><div><strong>{System.Net.WebUtility.HtmlEncode(primarySource.Title)}</strong><br><span style=\"font-size:12px;color:var(--muted);\">{System.Net.WebUtility.HtmlEncode(primarySource.Domain)} · AdGuard MV3 Shield Aktif</span></div><a class=\"btn-open\" href=\"{System.Net.WebUtility.HtmlEncode(primarySource.Url)}\">▶ Buka di Panel Kanan</a></div>");
         }

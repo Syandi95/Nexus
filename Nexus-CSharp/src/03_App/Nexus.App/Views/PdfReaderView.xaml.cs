@@ -9,7 +9,7 @@ namespace Nexus.App.Views;
 
 public partial class PdfReaderView : UserControl
 {
-    private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromMilliseconds(80) };
+    private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromMilliseconds(32) };
     private PdfReaderViewModel? _reader;
     private ScrollViewer? _scroll;
     private Point? _panStart;
@@ -100,9 +100,35 @@ public partial class PdfReaderView : UserControl
     private void RotateRight_Click(object sender,RoutedEventArgs e)=>_reader?.RotateViewCommand.Execute(90);
     private void ShowCards_Click(object sender,RoutedEventArgs e)
     {if(Parent is FrameworkElement parent&&parent.DataContext is PdfUtilitiesViewModel workspace)workspace.ToggleDocumentViewCommand.Execute(null);}
+    private void PrintBackdrop_MouseDown(object sender,MouseButtonEventArgs e)
+    {if(_reader!=null)_reader.IsPrintDialogOpen=false;}
+    private void OpenSystemPrintSettings_Click(object sender,RoutedEventArgs e)
+    {
+        try
+        {
+            var dlg=new PrintDialog();
+            if(dlg.ShowDialog()==true&&_reader!=null&&dlg.PrintQueue!=null)
+            {
+                _reader.SelectedPrinter=dlg.PrintQueue.FullName;
+            }
+        }
+        catch { }
+    }
     private void Pages_MouseWheel(object sender,MouseWheelEventArgs e){_navigationPage=null;}
     private void Pages_KeyDown(object sender,KeyEventArgs e)=>_navigationPage=null;
-    private void Reader_PreviewKeyDown(object sender,KeyEventArgs e){if(e.Key==Key.Escape&&_panStart!=null){ReleasePan();e.Handled=true;}}
+    private void Reader_PreviewKeyDown(object sender,KeyEventArgs e)
+    {
+        if(e.Key==Key.Escape)
+        {
+            if(_reader?.IsPrintDialogOpen==true){_reader.IsPrintDialogOpen=false;e.Handled=true;return;}
+            if(_panStart!=null){ReleasePan();e.Handled=true;}
+        }
+        else if(e.Key==Key.P&&(Keyboard.Modifiers&ModifierKeys.Control)==ModifierKeys.Control&&_reader?.HasDocument==true)
+        {
+            _reader.OpenPrintDialog();
+            e.Handled=true;
+        }
+    }
     private void Pages_MouseDown(object sender,MouseButtonEventArgs e)
     {
         _navigationPage=null;

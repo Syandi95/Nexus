@@ -18,8 +18,8 @@
                 <ResourceDictionary Source="/Nexus.App;component/Themes/Components/PdfWorkspace.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <Style x:Key="DocumentImageModeCardStyle" TargetType="RadioButton" BasedOn="{StaticResource NexusRadioButtonStyle}">
-                <Setter Property="MinHeight" Value="88"/>
-                <Setter Property="Padding" Value="12"/>
+                <Setter Property="MinHeight" Value="64"/>
+                <Setter Property="Padding" Value="10,7"/>
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="FocusVisualStyle" Value="{DynamicResource NexusFocusVisualStyle}"/>
@@ -76,17 +76,22 @@
              <Style.Triggers><DataTrigger Binding="{Binding ToolsExpanded}" Value="False"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander"><ContentPresenter Content="{TemplateBinding Content}"/></ControlTemplate></Setter.Value></Setter></DataTrigger></Style.Triggers>
             </Style>
             <DataTemplate x:Key="PdfToolEntry">
-             <Button Command="{Binding DataContext.SelectToolCommand,RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" ToolTip="{Binding UnavailableReason}" HorizontalContentAlignment="Stretch" Padding="6" Margin="0,2" Background="Transparent" BorderThickness="0">
-              <Grid MinHeight="32"><Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-               <Border Width="24" Height="24" CornerRadius="4" HorizontalAlignment="Left"><Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource NexusAccentPrimary}"/><Style.Triggers>
-                <DataTrigger Binding="{Binding Id}" Value="ImageExport"><Setter Property="Background" Value="{DynamicResource NexusSoftFolderForeground}"/></DataTrigger>
-                <DataTrigger Binding="{Binding Id}" Value="ImageToPdf"><Setter Property="Background" Value="{DynamicResource NexusSoftFolderForeground}"/></DataTrigger>
-                <DataTrigger Binding="{Binding Id}" Value="ToExcel"><Setter Property="Background" Value="{DynamicResource NexusSuccessForeground}"/></DataTrigger>
-                <DataTrigger Binding="{Binding Id}" Value="ExcelToPdf"><Setter Property="Background" Value="{DynamicResource NexusSuccessForeground}"/></DataTrigger>
-                <DataTrigger Binding="{Binding Id}" Value="ToPowerPoint"><Setter Property="Background" Value="{DynamicResource NexusSoftDeleteForeground}"/></DataTrigger>
-                <DataTrigger Binding="{Binding Id}" Value="PowerPointToPdf"><Setter Property="Background" Value="{DynamicResource NexusSoftDeleteForeground}"/></DataTrigger>
-               </Style.Triggers></Style></Border.Style><Grid><TextBlock services:NexusIcon.Glyph="{Binding Glyph}" Foreground="{DynamicResource NexusForegroundOnAccent}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/><TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundOnAccent}" Background="{Binding Background,RelativeSource={RelativeSource AncestorType=Border}}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/></Grid></Border>
-               <StackPanel Grid.Column="1"><TextBlock Text="{Binding Title}" Foreground="{DynamicResource NexusForegroundPrimary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding DataContext.ToolsExpanded,RelativeSource={RelativeSource AncestorType=UserControl}}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></StackPanel>
+             <Button Style="{StaticResource NexusSubtleButtonStyle}" Command="{Binding DataContext.SelectToolCommand,RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" ToolTip="{Binding UnavailableReason}" HorizontalContentAlignment="Stretch" Padding="6,5" Margin="0,2" Background="Transparent" BorderThickness="0">
+              <Grid MinHeight="34"><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+               <Grid Width="28" Height="28" HorizontalAlignment="Left" VerticalAlignment="Center" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                <Grid Visibility="{Binding IsConversionTool,Converter={StaticResource BooleanToVisibilityConverter}}">
+                 <Border Width="17" Height="19" CornerRadius="2.5" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,1,0,0" Background="{DynamicResource NexusSurfaceBase}" BorderBrush="{Binding AccentBrush}" BorderThickness="1.35">
+                  <Path Data="M 2,3 H 8 M 2,6 H 10 M 2,9 H 7" Stroke="{Binding AccentBrush}" StrokeThickness="1.2" Stretch="Uniform" Width="9" Height="7" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                 </Border>
+                 <Border MinWidth="15" Height="13" CornerRadius="2.5" Padding="2.5,0" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,1,1" Background="{Binding AccentBrush}">
+                  <TextBlock Text="{Binding Badge}" FontSize="7" FontWeight="Bold" Foreground="{DynamicResource NexusForegroundOnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                 </Border>
+                </Grid>
+                <Border Width="26" Height="26" CornerRadius="5.5" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{Binding AccentBrush}" Visibility="{Binding IsEditTool,Converter={StaticResource BooleanToVisibilityConverter}}">
+                 <Path Data="{Binding IconGeometry}" Fill="{DynamicResource NexusForegroundOnAccent}" Width="14" Height="14" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+               </Grid>
+               <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource NexusForegroundPrimary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding DataContext.ToolsExpanded,RelativeSource={RelativeSource AncestorType=UserControl}}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></StackPanel>
               </Grid>
              </Button>
             </DataTemplate>
@@ -181,20 +186,31 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Width="180" Margin="0,0,16,16"
-                                            Style="{StaticResource NexusCardStyle}" Padding="0" CornerRadius="14">
+                                    <Border x:Name="PdfFileCardBorder" Width="188" Margin="0,0,16,16"
+                                            Style="{StaticResource NexusCardStyle}"
+                                            Background="{DynamicResource NexusSurfaceBase}"
+                                            BorderBrush="{DynamicResource NexusContentBorder}"
+                                            BorderThickness="1"
+                                            Padding="0" CornerRadius="12" SnapsToDevicePixels="True" UseLayoutRounding="True">
                                         <Grid>
                                             <Grid.RowDefinitions>
-                                                <RowDefinition Height="130"/>
+                                                <RowDefinition Height="148"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
-                                            <!-- Preview area -->
-                                            <Border Grid.Row="0" CornerRadius="14,14,0,0" ClipToBounds="True"
-                                                    Background="{DynamicResource NexusSurfaceSecondary}" MouseLeftButtonUp="Card_OpenDocument">
+                                            <!-- Preview area (subtle outer border + elevated paper shadow inside thumbnail) -->
+                                            <Border Grid.Row="0" CornerRadius="12,12,0,0" ClipToBounds="True"
+                                                    Background="Transparent" Padding="18,16,18,8" MouseLeftButtonUp="Card_OpenDocument">
                                                 <Grid>
-                                                    <Image x:Name="PdfCardPreviewImage" Source="{Binding PreviewImage}" Stretch="Uniform"
-                                                           Visibility="{Binding PreviewAvailable, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                    <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            Background="White" CornerRadius="2"
+                                                            Visibility="{Binding PreviewAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.20"/>
+                                                        </Border.Effect>
+                                                        <Image x:Name="PdfCardPreviewImage" Source="{Binding PreviewImage}" Stretch="Uniform"
+                                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    </Border>
                                                     <TextBlock services:NexusIcon.Glyph="PDFPage" FontSize="40"
                                                                Foreground="{DynamicResource NexusForegroundSecondary}"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -202,39 +218,60 @@
                                                 </Grid>
                                             </Border>
 
-                                            <!-- Action buttons overlay -->
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                                        VerticalAlignment="Top" Margin="8" Panel.ZIndex="10">
+                                            <!-- Action buttons overlay (visible only on card hover) -->
+                                            <StackPanel x:Name="PdfCardHoverActions" Orientation="Horizontal" HorizontalAlignment="Right"
+                                                        VerticalAlignment="Top" Margin="6" Panel.ZIndex="10">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Opacity" Value="0"/>
+                                                        <Setter Property="IsHitTestVisible" Value="False"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=PdfFileCardBorder}" Value="True">
+                                                                <Setter Property="Opacity" Value="1"/>
+                                                                <Setter Property="IsHitTestVisible" Value="True"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
                                                 <Button Style="{StaticResource NexusOverlayIconButtonStyle}"
                                                         Command="{Binding DataContext.ShowFullScreenCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}"
                                                         CommandParameter="{Binding}"
-                                                        Margin="0,0,6,0" ToolTip="Lihat preview">
-                                                    <TextBlock services:NexusIcon.Glyph="FullScreen" FontSize="14"
+                                                        Width="30" Height="30" Padding="0"
+                                                        Margin="0,0,4,0" ToolTip="Lihat preview">
+                                                    <TextBlock services:NexusIcon.Glyph="FullScreen" FontSize="13"
                                                                Foreground="{DynamicResource NexusForegroundPrimary}"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                 </Button>
                                                 <Button Style="{StaticResource NexusSoftDeleteIconButtonStyle}"
                                                         Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}"
                                                         CommandParameter="{Binding}"
-                                                        Width="36" Height="36" Padding="0"
+                                                        Width="30" Height="30" Padding="0"
                                                         ToolTip="Hapus file">
-                                                    <TextBlock services:NexusIcon.Glyph="Delete" FontSize="14"
+                                                    <TextBlock services:NexusIcon.Glyph="Delete" FontSize="13"
                                                                Foreground="{DynamicResource NexusSoftDeleteForeground}"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                 </Button>
                                             </StackPanel>
 
-                                            <!-- File info -->
-                                            <StackPanel Grid.Row="1" Margin="12,10,12,12">
+                                            <!-- File info + Physical Size in cm -->
+                                            <StackPanel Grid.Row="1" Margin="14,2,14,12" HorizontalAlignment="Stretch">
                                                 <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                            Foreground="{DynamicResource NexusForegroundPrimary}"
-                                                           TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
+                                                           TextAlignment="Center" HorizontalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,0,0,3"/>
                                                 <TextBlock FontSize="11" Foreground="{DynamicResource NexusForegroundSecondary}"
+                                                           TextAlignment="Center" HorizontalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis">
-                                                    <Run Text="{Binding SizeText}"/><Run Text=" · "/><Run Text="{Binding PageCountText}"/>
+                                                    <Run Text="{Binding SizeText}"/><Run Text=" - "/><Run Text="{Binding PageCountText}"/>
                                                 </TextBlock>
+                                                <TextBlock Text="{Binding DimensionsCmText}" FontSize="11"
+                                                           Foreground="{DynamicResource NexusForegroundSecondary}"
+                                                           TextAlignment="Center" HorizontalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                                           Visibility="{Binding HasDimensionsCm, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                                 <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="SemiBold"
-                                                           Foreground="{Binding StatusForeground}" Margin="0,4,0,0"/>
+                                                           TextAlignment="Center" HorizontalAlignment="Center"
+                                                           Foreground="{Binding StatusForeground}" Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -277,21 +314,21 @@
                                        VerticalAlignment="Center" Margin="11,0,0,0"/>
                         </StackPanel>
 
-                        <StackPanel x:Name="PdfImageModePanel" Visibility="{Binding IsImageToolSelected,Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,12">
+                        <StackPanel x:Name="PdfImageModePanel" Visibility="{Binding IsImageToolSelected,Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,10">
                             <RadioButton x:Name="PdfPageExportMode" IsChecked="{Binding RenderPdfPages,Mode=TwoWay}"
-                                         Style="{StaticResource DocumentImageModeCardStyle}" Margin="0,0,0,10" AutomationProperties.Name="Konversi halaman PDF menjadi JPG atau PNG">
+                                         Style="{StaticResource DocumentImageModeCardStyle}" Margin="0,0,0,8" AutomationProperties.Name="Konversi halaman PDF menjadi JPG atau PNG">
                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock services:NexusIcon.Glyph="Document" FontSize="20" Foreground="{DynamicResource NexusAccentPrimary}" VerticalAlignment="Center"/>
+                                    <TextBlock services:NexusIcon.Glyph="Document" FontSize="18" Foreground="{DynamicResource NexusAccentPrimary}" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" Margin="8,0,0,0"><TextBlock Text="Konversi halaman" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}"/>
-                                        <TextBlock Text="Setiap halaman menjadi JPG atau PNG." TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0" Foreground="{DynamicResource NexusForegroundSecondary}"/></StackPanel>
+                                        <TextBlock Text="Setiap halaman menjadi JPG atau PNG." TextWrapping="Wrap" FontSize="11" Margin="0,2,0,0" Foreground="{DynamicResource NexusForegroundSecondary}"/></StackPanel>
                                 </Grid>
                             </RadioButton>
                             <RadioButton x:Name="PdfExtractImagesMode" IsChecked="{Binding ExtractEmbeddedImages,Mode=TwoWay}"
                                          Style="{StaticResource DocumentImageModeCardStyle}" AutomationProperties.Name="Extract Images, ekstrak gambar tertanam sebagai PNG">
                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock services:NexusIcon.Glyph="Image" FontSize="20" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center"/>
+                                    <TextBlock services:NexusIcon.Glyph="Image" FontSize="18" Foreground="{DynamicResource NexusForegroundSecondary}" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" Margin="8,0,0,0"><TextBlock Text="Extract Images" FontWeight="SemiBold" Foreground="{DynamicResource NexusForegroundPrimary}"/>
-                                        <TextBlock Text="Ekstrak gambar tertanam sebagai PNG." TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0" Foreground="{DynamicResource NexusForegroundSecondary}"/></StackPanel>
+                                        <TextBlock Text="Ekstrak gambar tertanam sebagai PNG." TextWrapping="Wrap" FontSize="11" Margin="0,2,0,0" Foreground="{DynamicResource NexusForegroundSecondary}"/></StackPanel>
                                 </Grid>
                             </RadioButton>
                         </StackPanel>

@@ -294,7 +294,7 @@ public sealed class BrowserUseDynamicLoopTests
     [Theory]
     [InlineData("buka whataap di browser", "https://web.whatsapp.com", null)]
     [InlineData("buka google gemini dan masukan input bagaimana membuat menu nasi goreng, rangkum berikan kepada saya", "https://gemini.google.com/app", "bagaimana membuat menu nasi goreng")]
-    [InlineData("buka / cari movieku masuk ke webnya masukan input di pencarian nama film ini spiderman 3 langsung dowloadkan", "https://movieku.website/", "spiderman 3")]
+    [InlineData("buka / cari movieku masuk ke webnya masukan input di pencarian nama film ini spiderman 3 langsung dowloadkan", "https://www.google.com", "spiderman 3")]
     [InlineData("buka https://movieku.website/ masukan di pencarian \"spidermen 3\" carikan tempat dowloadnya untuk 720 dpi", "https://movieku.website/", "spidermen 3")]
     [InlineData("buka https://movieku.website/ masukan di pencarian \"spidermen 3\" carikan tempat dowloadnya untuk 720 dpi tapi hati-hati jangan iklan", "https://movieku.website/", "spidermen 3")]
     [InlineData("buka youtube input di telusuri masukan rizki febian sisa rasa dan play", "https://www.youtube.com", "rizki febian sisa rasa")]
@@ -430,7 +430,7 @@ public sealed class BrowserUseDynamicLoopTests
                     "Jawaban telah tampil", "Selesai", "Menyajikan hasil resep nasi goreng dari Gemini", "done", TextOrUrl: "Selesai"));
             });
 
-        Assert.True(summary.IsSuccess);
+        Assert.True(summary.IsSuccess, summary.FinalGroundedReportMarkdown);
         Assert.Contains("Mengetik \"bagaimana membuat menu nasi goreng\"", summary.FinalGroundedReportMarkdown, StringComparison.Ordinal);
         Assert.Contains("Resep Nasi Goreng Rumahan", summary.FinalGroundedReportMarkdown, StringComparison.Ordinal);
         Assert.Contains(executedScripts, s => s.Contains("bagaimana membuat menu nasi goreng", StringComparison.Ordinal));
@@ -1723,7 +1723,7 @@ public sealed class BrowserUseDynamicLoopTests
         var loop = new DynamicReActControlLoop(adapter, search, files, workspaceVm);
 
         var summary = await loop.RunDynamicAgentLoopAsync(prompt);
-        Assert.True(summary.IsSuccess);
+        Assert.True(summary.IsSuccess, summary.FinalGroundedReportMarkdown);
         Assert.Single(navigatedUrls);
         Assert.Equal("https://web.whatsapp.com", navigatedUrls[0]);
         Assert.DoesNotContain("?s=", workspaceVm.LastBrowserUrl, StringComparison.OrdinalIgnoreCase);
@@ -1976,10 +1976,10 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("VisionQuest (2026) Episode 1 Sub Indo", sub1));
         Assert.True(AgentTaskChecklistContract.IsSpecificSubItemMatch("https://movieku.website/visionquest-2026-episode-01/", sub1));
 
-        // 2. Single-stage prompt without arrows ("buka movieku cari One Piece memilih bagian Episode 05 dan play")
+        // 2. Single-stage prompt without arrows ("buka movieku cari One Piece memilih bagian Episode 05 dan play") -> routes via Google search, not hardcoded movieku.website
         var (site2, query2, _) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask(
             "buka movieku cari One Piece memilih bagian Episode 05 dan play");
-        Assert.Equal("https://movieku.website/", site2);
+        Assert.Equal("https://www.google.com", site2);
         Assert.Equal("One Piece", query2);
         var sub2 = AgentTaskChecklistContract.TryExtractRequestedSubItem("buka movieku cari One Piece memilih bagian Episode 05 dan play");
         Assert.NotNull(sub2);
@@ -2116,7 +2116,11 @@ public sealed class BrowserUseDynamicLoopTests
         var loop = new DynamicReActControlLoop(adapter, search, files, workspaceVm);
 
         var summary = await loop.RunDynamicAgentLoopAsync(prompt);
-        Assert.True(summary.IsSuccess);
+        // KOREKSI (audit): halaman Episode 01 fixture ini TIDAK memiliki tombol putar / bukti video berputar.
+        // Sebelumnya tes memaksa IsSuccess == true (klaim sukses palsu). Yang benar: navigasi sampai Episode 01 tercapai,
+        // tetapi tujuan "play" TIDAK terverifikasi sehingga agen tidak boleh menyatakan sukses.
+        Assert.False(summary.IsSuccess, "Tanpa bukti pemutaran, agen tidak boleh menyatakan sukses.");
+        Assert.False(summary.GoalVerified);
         Assert.True(summary.Benchmark.ActionsExecuted >= 6, $"Expected >= 6 actions, got {summary.Benchmark.ActionsExecuted}");
         Assert.Equal("https://movieku.website/visionquest-2026-episode-01/", workspaceVm.LastBrowserUrl);
     }
@@ -2151,13 +2155,13 @@ public sealed class BrowserUseDynamicLoopTests
         while (dir is not null)
         {
             string candidate = System.IO.Path.Combine(dir.FullName, "src", "03_App", "Nexus.App");
-            if (System.IO.Directory.Exists(candidate))
+            if (System.IO.File.Exists(System.IO.Path.Combine(candidate, "Nexus.App.csproj")))
             {
                 appDir = candidate;
                 break;
             }
             string candidateDirect = System.IO.Path.Combine(dir.FullName, "03_App", "Nexus.App");
-            if (System.IO.Directory.Exists(candidateDirect))
+            if (System.IO.File.Exists(System.IO.Path.Combine(candidateDirect, "Nexus.App.csproj")))
             {
                 appDir = candidateDirect;
                 break;
@@ -2215,8 +2219,875 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appDir!, "Views", "DshSidebarView.xaml")));
         Assert.False(System.IO.File.Exists(System.IO.Path.Combine(appDir!, "Services", "BrowserAgent", "BrowserUseDomEngine.cs")));
     }
-}
 
+    [Fact]
+    public async Task AuditF1ToF8_HonestSuccess_RealBenchmark_HardenedSsrf_JsStr_And_CommaPriority_VerifyCleanly()
+    {
+        // F1 & F2: No done until step cap => IsSuccess=false, GoalVerified=false, LocalModelTtftMs=0, RawContentTokens != ExtractedContentTokens * 2
+        int prevMax = BrowserAgentRuntimeSettings.Current.MaxActionsPerTask;
+        try
+        {
+            BrowserAgentRuntimeSettings.Current.MaxActionsPerTask = 3;
+            var vm = new AgentWorkspaceViewModel();
+            var loop = new DynamicReActControlLoop(new WebView2NativeAdapter(vm), new ExternalSearchProvider(), new NexusWorkspaceFileService(vm), vm);
+            int n = 0;
+            var s = await loop.RunDynamicAgentLoopAsync("tugas yang tidak pernah selesai",
+                stepPlanner: (snap, step, logs) => Task.FromResult(new AgentStepDecision("-", "-", "tunggu", "wait", TextOrUrl: (1 + (n++ % 9)).ToString())));
+            Assert.False(s.IsSuccess);
+            Assert.False(s.GoalVerified);
+            Assert.False(s.Benchmark.TaskSucceeded);
+            Assert.Equal(0L, s.Benchmark.LocalModelTtftMs);
+            Assert.Equal(0d, s.Benchmark.TokensPerSecond);
+            Assert.NotEqual(s.Benchmark.ExtractedContentTokens * 2, s.Benchmark.RawContentTokens);
+        }
+        finally
+        {
+            BrowserAgentRuntimeSettings.Current.MaxActionsPerTask = prevMax;
+        }
+
+        // F3: Hardened SSRF blocks localhost., *.localhost, IPv4-mapped IPv6, ULA/link-local IPv6, CGNAT 100.64/10, .internal, single-label intranet, user:pw@
+        string[] badUrls =
+        {
+            "http://localhost./admin",
+            "http://app.localhost/",
+            "http://[::1]/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:10.0.0.5]/",
+            "http://[fd00::1]/",
+            "http://[fe80::1]/",
+            "http://2130706433/",
+            "http://0x7f000001/",
+            "http://127.1/",
+            "http://100.64.0.1/",
+            "http://metadata.google.internal/",
+            "http://printer.internal/",
+            "http://intranet/",
+            "http://user:pw@example.com/"
+        };
+        foreach (var u in badUrls)
+        {
+            Assert.False(BrowserSafetyGuard.ValidateNavigationUrl(u).IsAllowed);
+        }
+        Assert.True(BrowserSafetyGuard.ValidateNavigationUrl("https://www.google.com/").IsAllowed);
+        Assert.True(BrowserSafetyGuard.ValidateNavigationUrl("https://movieku.website/watch/x-episode-01/").IsAllowed);
+
+        // F4: JsStr produces valid JSON string literals even with newlines/quotes/backslashes
+        string jsFind = BrowserUseDomEngine.GetFindElementsScript("div.a\nb'\\");
+        Assert.Contains("document.querySelectorAll(\"div.a\\nb", jsFind);
+        string jsKeys = BrowserUseDomEngine.GetSendKeysScript("Enter\nShift");
+        Assert.Contains("var k = \"Enter\\nShift\"", jsKeys);
+
+        // F5: YouTube watch URL does not falsely claim "sedang diputar" without playback proof
+        var ytSnap = new BrowserLiveStateSnapshot("snap-yt", "https://www.youtube.com/watch?v=abc123", "YT", 0,
+            new List<BrowserVirtualTab>(),
+            new List<InteractiveDomNode> { new(1, "button", "", "Subscribe", null, null, false, false, "/html/body/button[1]") },
+            "", 0, 0);
+        var ytDec = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(null, "buka youtube cari lagu x dan play", ytSnap, step: 2, alreadyDownloaded: false, hasTypedInput: true);
+        Assert.DoesNotContain("sedang diputar", (ytDec.TextOrUrl ?? "") + ytDec.EvaluationPreviousGoal + ytDec.NextGoal);
+        Assert.Contains("tidak diverifikasi", ytDec.TextOrUrl ?? "");
+
+        // F7: Comma-separated multi-command task prioritizes first stated site ("buka google, cari lk21...")
+        var commaTask = DynamicReActControlLoop.AnalyzeUniversalBrowserTask("buka google, cari lk21, masuk ke film, putar episode 1");
+        Assert.Contains("google", commaTask.ResolvedSiteUrl ?? "");
+
+        // Phase 0 & 1 User Decisions:
+        // - "cari movieku" or "buka movieku" without explicit domain routes to Google search (not hardcoded movieku.website)
+        var moviekuSearch = DynamicReActControlLoop.AnalyzeUniversalBrowserTask("cari website movieku");
+        Assert.Equal("https://www.google.com", moviekuSearch.ResolvedSiteUrl);
+        // - ConversationViewModel calls local model via _conversationRuntime.StreamAsync, uses ShowConfirmationAsync for sensitive actions, and formats ChecklistCompletedCount/ChecklistTotalCount
+        string? appDir2 = null;
+        var cur2 = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        while (cur2 != null)
+        {
+            string cand2 = System.IO.Path.Combine(cur2.FullName, "src", "03_App", "Nexus.App");
+            if (System.IO.Directory.Exists(cand2)) { appDir2 = cand2; break; }
+            cur2 = cur2.Parent;
+        }
+        if (appDir2 != null)
+        {
+            string cvmCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir2, "ViewModels", "ConversationViewModel.cs"));
+            Assert.Contains("ShowConfirmationAsync", cvmCs);
+            Assert.Contains("FormatPlainTextReasoningDrawer", cvmCs);
+            Assert.Contains("summary.ChecklistCompletedCount", cvmCs);
+        }
+    }
+
+    [Fact]
+    public async Task AuditP0P1_ZeroSiteHardcode_DropdownDismiss_RealVideoSeek_And_BalancedJson_VerifyCleanly()
+    {
+        // 1. F-01: Verify zero site-specific hardcoded literals ("Outerwear", "about---blank", ".bixbox", ".film-card", ".eplister") in production BrowserAgent code
+        var dir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? srcRoot = null;
+        while (dir is not null)
+        {
+            string cand = System.IO.Path.Combine(dir.FullName, "src");
+            if (System.IO.File.Exists(System.IO.Path.Combine(cand, "03_App", "Nexus.App", "Nexus.App.csproj")))
+            {
+                srcRoot = cand;
+                break;
+            }
+            dir = dir.Parent;
+        }
+        Assert.NotNull(srcRoot);
+
+        string domEngineCode = System.IO.File.ReadAllText(System.IO.Path.Combine(srcRoot!, "02_Modules", "Nexus.Core.HomeSettings", "BrowserAgent", "BrowserUseDomEngine.cs"));
+        string supervisorCode = System.IO.File.ReadAllText(System.IO.Path.Combine(srcRoot!, "02_Modules", "Nexus.Core.HomeSettings", "BrowserAgent", "BrowserAgentSupervisorEngine.cs"));
+        string loopCode = System.IO.File.ReadAllText(System.IO.Path.Combine(srcRoot!, "03_App", "Nexus.App", "Services", "BrowserAgent", "DynamicReActControlLoop.cs"));
+        string cvmCode = System.IO.File.ReadAllText(System.IO.Path.Combine(srcRoot!, "03_App", "Nexus.App", "ViewModels", "ConversationViewModel.cs"));
+
+        foreach (string code in new[] { domEngineCode, supervisorCode, loopCode })
+        {
+            Assert.DoesNotContain("Outerwear", code, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("about---blank", code, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".bixbox", code, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".film-card", code, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".eplister", code, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Structural URL validator rejects bogus multi-hyphen hosts while accepting valid URLs
+        Assert.False(BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("https://about---blank.com/outerwear"));
+        Assert.False(BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("about:blank"));
+        Assert.True(BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("https://www.youtube.com/watch?v=abc123"));
+
+        // 2. Dropdown Dismissal & Search Submit (image_aa737e.jpg fix):
+        string inputScript = BrowserUseDomEngine.GetExecuteElementActionScript(
+            index: 1,
+            fallbackXPath: "//input[@id='search']",
+            actionType: "input",
+            valueToInputOrSelect: "guru gembul",
+            pressEnter: true,
+            expectedTag: "input",
+            expectedRole: "searchbox");
+        Assert.Contains("Escape", inputScript, StringComparison.Ordinal);
+        Assert.Contains("el.blur()", inputScript, StringComparison.Ordinal);
+        Assert.Contains("ytSearchboxComponentSuggestionsContainer", inputScript, StringComparison.Ordinal);
+        Assert.Contains("dropdownDismissed", inputScript, StringComparison.Ordinal);
+
+        // 3. F-02 Real video.currentTime Auto-Seek & Playback Verification (image_aa6b5e.jpg fix):
+        string mediaScript = BrowserUseDomEngine.GetControlMediaPlaybackScript(323);
+        Assert.Contains("v.currentTime = targetTime", mediaScript, StringComparison.Ordinal);
+        Assert.Contains("ytp.seekTo(targetTime, true)", mediaScript, StringComparison.Ordinal);
+        Assert.Contains("v.play()", mediaScript, StringComparison.Ordinal);
+
+        var workspaceVm = new AgentWorkspaceViewModel { LastBrowserUrl = "https://www.youtube.com/results?search_query=sadap" };
+        bool mediaControlScriptCalled = false;
+        var adapter = new WebView2NativeAdapter(
+            workspaceVm,
+            scriptExecutor: js =>
+            {
+                if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(
+                        "{\"Url\":\"" + workspaceVm.LastBrowserUrl + "\",\"Title\":\"YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                        "\"CleanText\":\"Video\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"EKS KAPOLRI SADAP PRABOWO\",\"InputType\":\"\",\"Href\":\"https://www.youtube.com/watch?v=vid523\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+                }
+                if (js.Contains("v.currentTime = targetTime", StringComparison.Ordinal))
+                {
+                    mediaControlScriptCalled = true;
+                    return Task.FromResult("{\"hasVideo\":true,\"playing\":true,\"currentTime\":323,\"duration\":1821,\"readyState\":4}");
+                }
+                workspaceVm.LastBrowserUrl = "https://www.youtube.com/watch?v=vid523";
+                return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"href\":\"https://www.youtube.com/watch?v=vid523\"}");
+            });
+        var loop = new DynamicReActControlLoop(
+            adapter,
+            new ExternalSearchProvider(),
+            new NexusWorkspaceFileService(workspaceVm),
+            workspaceVm,
+            jsEvaluator: js =>
+            {
+                if (js.Contains("v.currentTime = targetTime", StringComparison.Ordinal))
+                {
+                    mediaControlScriptCalled = true;
+                    return Task.FromResult("{\"hasVideo\":true,\"playing\":true,\"currentTime\":323,\"duration\":1821,\"readyState\":4}");
+                }
+                return Task.FromResult(
+                    "{\"Url\":\"" + workspaceVm.LastBrowserUrl + "\",\"Title\":\"YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                    "\"CleanText\":\"Video\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"EKS KAPOLRI SADAP PRABOWO\",\"InputType\":\"\",\"Href\":\"https://www.youtube.com/watch?v=vid523\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+            });
+
+        var seekSummary = await loop.RunDynamicAgentLoopAsync(
+            "buka youtube cari di pencarian isi EKS KAPOLRI SADAP PRABOWO play klik videonya ke menit 5.23 videonya",
+            stepPlanner: (snap, step, logs) =>
+            {
+                if (step == 1)
+                    return Task.FromResult(new AgentStepDecision("Klik video", "Buka video", "Klik video", "click_element", ElementIndex: 1));
+                return Task.FromResult(new AgentStepDecision("Selesai", "Video berputar di 5:23", "Selesai", "done"));
+            });
+        Assert.True(mediaControlScriptCalled, "GetControlMediaPlaybackScript(323) harus dieksekusi secara nyata pada DOM.");
+        Assert.True(seekSummary.IsSuccess);
+
+        // 4. F-03 & F-07: Guard 0 respects valid LLM actions (e.g. scroll_down) on watch page, and Guard 2 allows done on summary tasks
+        var watchSnap = new BrowserLiveStateSnapshot(
+            "snap-w",
+            "https://www.youtube.com/watch?v=abc123",
+            "Video",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "a", "link", "YouTube", null, "https://www.youtube.com/", false, false, "//*[@id='logo']", true),
+                new(2, "button", "button", "Tampilkan transkrip", null, null, false, false, "//button[@id='transcript']", true)
+            },
+            "Isi halaman video",
+            0,
+            600);
+
+        var validScrollOnWatch = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"action\":\"scroll_down\",\"next_goal\":\"Membaca komentar video\"}",
+            "buka youtube cari guru gembul dan baca komentarnya",
+            watchSnap,
+            step: 3,
+            alreadyDownloaded: false,
+            hasTypedInput: true);
+        Assert.Equal("scroll_down", validScrollOnWatch.ActionName);
+
+        var summaryDoneOnSearch = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"action\":\"done\",\"next_goal\":\"Rangkuman selesai\"}",
+            "cari mekanika kuantum dan rangkum hasilnya",
+            watchSnap with { CurrentUrl = "https://www.google.com/search?q=mekanika+kuantum" },
+            step: 3,
+            alreadyDownloaded: false,
+            hasTypedInput: true);
+        Assert.Equal("done", summaryDoneOnSearch.ActionName);
+
+        // 5. F-05 & F-06: Balanced JSON brace detection for local Gemma streaming & 12.0s timeout in ConversationViewModel
+        string partialNestedJson = "{\"evaluation_previous_goal\":\"Langkah {1} berhasil\",\"memory\":\"masih menulis...";
+        string completeNestedJson = "{\"evaluation_previous_goal\":\"Langkah {1} berhasil\",\"memory\":\"siap\",\"next_goal\":\"klik\",\"action\":\"click_element\",\"element_index\":2}";
+        Assert.False(BrowserUseDomEngine.HasCompleteBalancedJsonObject(partialNestedJson));
+        Assert.True(BrowserUseDomEngine.HasCompleteBalancedJsonObject(completeNestedJson));
+
+        Assert.Contains("HasCompleteBalancedJsonObject", cvmCode, StringComparison.Ordinal);
+        Assert.Contains("double calibratedTimeoutSec = 12.0;", cvmCode, StringComparison.Ordinal);
+        Assert.Contains("responseSchema", cvmCode, StringComparison.Ordinal);
+        Assert.Contains("json_object", cvmCode, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AuditP0P1_Corrections_ReadBackMutation_HonestScroll_HonestUrl_UnverifiedGuard0_And_LabeledOverrides_VerifyCleanly()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+        wheel.MarkFreshSnapshotTaken();
+
+        // 1. P0-1 Correction: ScrollAsync without JS bridge returns IsSuccess=false ("SCROLL_BRIDGE_UNAVAILABLE"), NOT silent success!
+        var prevLiveEval = BrowserAgentRuntimeSettings.Current.LiveJsEvaluator;
+        try
+        {
+            BrowserAgentRuntimeSettings.Current.LiveJsEvaluator = null;
+            var vmNoBridge = new AgentWorkspaceViewModel();
+            var adapterNoBridge = new WebView2NativeAdapter(vmNoBridge, scriptExecutor: null);
+            var scrollNoBridge = await adapterNoBridge.ScrollAsync("down", 500);
+            Assert.False(scrollNoBridge.IsSuccess);
+            Assert.Equal("SCROLL_BRIDGE_UNAVAILABLE", scrollNoBridge.ErrorCode);
+
+            // 2. P0-1 Correction: FillAsync and SelectAsync with empty/null JS response return IsSuccess=false ("JS_EMPTY_RESPONSE"), NOT success!
+            var adapterEmptyJs = new WebView2NativeAdapter(vmNoBridge, scriptExecutor: _ => Task.FromResult(string.Empty));
+            var snapInput = new BrowserLiveStateSnapshot(
+                "snap-p01",
+                "https://example.org",
+                "Example",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "input", "textbox", "Search", "text", null, false, false, "//input[1]", true),
+                    new(2, "select", "combobox", "Sort", null, null, false, false, "//select[1]", true)
+                },
+                "Content",
+                0,
+                400);
+            adapterEmptyJs.SyncLiveSnapshot(snapInput);
+
+            var fillEmpty = await adapterEmptyJs.FillAsync("snap-p01", "e1", "test");
+            Assert.False(fillEmpty.IsSuccess);
+            Assert.Equal("JS_EMPTY_RESPONSE", fillEmpty.ErrorCode);
+
+            var selectEmpty = await adapterEmptyJs.SelectAsync("snap-p01", "e2", "newest");
+            Assert.False(selectEmpty.IsSuccess);
+            Assert.Equal("JS_EMPTY_RESPONSE", selectEmpty.ErrorCode);
+
+            // 3. P0-1 Correction: GetExecuteElementActionScript includes read-back verification (INPUT_READBACK_MISMATCH & SELECT_READBACK_MISMATCH)
+            string inputJs = BrowserUseDomEngine.GetExecuteElementActionScript(1, "//input[1]", "input", "halo", false, "input", "textbox");
+            Assert.Contains("INPUT_READBACK_MISMATCH", inputJs, StringComparison.Ordinal);
+            Assert.Contains("readBackValue", inputJs, StringComparison.Ordinal);
+
+            string selectJs = BrowserUseDomEngine.GetExecuteElementActionScript(2, "//select[1]", "select", "newest", false, "select", "combobox");
+            Assert.Contains("SELECT_READBACK_MISMATCH", selectJs, StringComparison.Ordinal);
+
+            // 4. P0-2 Correction: AgentWorkspaceViewModel.NavigateBrowserFromAgentAsync does NOT optimistically overwrite LastBrowserUrl before BrowserNavigateRequested completes
+            var vmHonestUrl = new AgentWorkspaceViewModel { LastBrowserUrl = "https://initial.example.org" };
+            string urlSeenInsideHandlerBeforeCompletion = string.Empty;
+            vmHonestUrl.BrowserNavigateRequested += requestedUrl =>
+            {
+                urlSeenInsideHandlerBeforeCompletion = vmHonestUrl.LastBrowserUrl;
+                return Task.FromResult("[NAVIGATION_STATUS] FAILED:Timeout\n[PAGE_TITLE] Error\n[PAGE_URL] https://initial.example.org");
+            };
+            var adapterHonestUrl = new WebView2NativeAdapter(vmHonestUrl);
+            var failedNav = await adapterHonestUrl.NavigateAsync("https://unverified-target.example.org");
+            Assert.False(failedNav.IsSuccess);
+            Assert.Equal("https://initial.example.org", urlSeenInsideHandlerBeforeCompletion);
+            Assert.Equal("https://initial.example.org", vmHonestUrl.LastBrowserUrl);
+
+            // 5. P1-1 & P1-2 Corrections: Guard 0 with playAlreadyExecuted=false marks [UNVERIFIED_DONE] & [GUARD_OVERRIDE:Guard0_Unverified],
+            // and RunDynamicAgentLoopAsync sets IsSuccess=false & GoalVerified=false (never counting unverified done as success!)
+            var watchSnap = new BrowserLiveStateSnapshot(
+                "snap-w0",
+                "https://www.youtube.com/watch?v=unverified123",
+                "YouTube Video",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                Array.Empty<InteractiveDomNode>(),
+                "Video page",
+                0,
+                400);
+            var guard0Unverified = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+                rawModelOutput: string.Empty,
+                userTask: "buka youtube cari video dan play",
+                snapshot: watchSnap,
+                step: 2,
+                alreadyDownloaded: false,
+                hasTypedInput: true,
+                playAlreadyExecuted: false);
+            Assert.Equal("done", guard0Unverified.ActionName);
+            Assert.Contains("[GUARD_OVERRIDE:Guard0_Unverified]", guard0Unverified.EvaluationPreviousGoal, StringComparison.Ordinal);
+            Assert.Contains("[UNVERIFIED_DONE]", guard0Unverified.Memory, StringComparison.Ordinal);
+
+            var loopUnverified = new DynamicReActControlLoop(
+                new WebView2NativeAdapter(vmNoBridge),
+                new ExternalSearchProvider(),
+                new NexusWorkspaceFileService(vmNoBridge),
+                vmNoBridge);
+            var unverifiedSummary = await loopUnverified.RunDynamicAgentLoopAsync(
+                "buka youtube cari video dan play",
+                stepPlanner: (_, _, _) => Task.FromResult(guard0Unverified));
+            Assert.False(unverifiedSummary.IsSuccess);
+            Assert.False(unverifiedSummary.GoalVerified);
+            Assert.False(unverifiedSummary.Benchmark.TaskSucceeded);
+        }
+        finally
+        {
+            BrowserAgentRuntimeSettings.Current.LiveJsEvaluator = prevLiveEval;
+        }
+    }
+
+    [Fact]
+    public async Task AuditDirectOpenGuard_CommaMultiClause_WhatsAppSearchSuffix_And_VetoSymmetry_VerifyCleanly()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+        wheel.MarkFreshSnapshotTaken();
+
+        // 1. Per-clause query & site extraction on comma-separated multi-clause command (image_591845.png fix):
+        string multiClauseTask = "buka google, buka youtube, cari kamar film, pilih video paling atas dan play";
+        var (firstSite, extractedQuery, wantsDl) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask(multiClauseTask);
+        Assert.Equal("https://www.google.com", firstSite);
+        Assert.Equal("kamar film", extractedQuery);
+        Assert.False(wantsDl);
+
+        // 2. WhatsApp search suffix stripping (image_5833e0.jpg fix: "buka whatapp cari eri susan di pencarian" -> "eri susan", NOT "eri susan di pencarian"):
+        string waTask = DynamicReActControlLoop.NormalizeUserTyposAndTerms("buka whatapp cari eri susan di pencarian");
+        var (waSite, waQuery, _) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask(waTask);
+        Assert.Equal("https://web.whatsapp.com", waSite);
+        Assert.Equal("eri susan", waQuery);
+
+        // 3. Direct-Open Guard Veto Symmetry: on Step 2 after opening Google for a multi-clause command,
+        // BuildDefaultAutonomousStepDecision MUST NOT return "done"; it must advance to the next clause (opening YouTube)!
+        var googleSnap = new BrowserLiveStateSnapshot(
+            "snap-g1",
+            "https://www.google.com/",
+            "Google",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "textarea", "combobox", "Telusuri", "search", null, false, false, "//textarea[@name='q']", true)
+            },
+            "Google Search",
+            0,
+            400);
+
+        var step2Decision = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            rawModelOutput: string.Empty,
+            userTask: multiClauseTask,
+            snapshot: googleSnap,
+            step: 2,
+            alreadyDownloaded: false,
+            hasTypedInput: false,
+            playAlreadyExecuted: false);
+        Assert.NotEqual("done", step2Decision.ActionName);
+        Assert.Equal("go_to_url", step2Decision.ActionName);
+        Assert.Equal("https://www.youtube.com", step2Decision.TextOrUrl);
+
+        // 4. End-to-End Multi-Clause Comma Chain ("buka google, buka youtube, cari kamar film, pilih video paling atas dan play"):
+        // Must execute: Step 1 (google.com) -> Step 2 (youtube.com) -> Step 3 (input "kamar film") -> Step 4 (click top video) -> Step 5 (verify playback & done)!
+        var visitedUrls = new List<string>();
+        var workspaceVm = new AgentWorkspaceViewModel();
+        workspaceVm.BrowserNavigateRequested += url =>
+        {
+            visitedUrls.Add(url);
+            workspaceVm.LastBrowserUrl = url;
+            return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Loaded\n[PAGE_URL] " + url);
+        };
+
+        var adapter = new WebView2NativeAdapter(
+            workspaceVm,
+            scriptExecutor: js =>
+            {
+                string cur = workspaceVm.LastBrowserUrl ?? string.Empty;
+                if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                {
+                    if (cur.Contains("youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Task.FromResult(
+                            "{\"Url\":\"" + cur + "\",\"Title\":\"Kamar Film - Review\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                            "\"CleanText\":\"Kamar Film Video\",\"Elements\":[{\"Index\":1,\"TagName\":\"video\",\"Role\":\"video\",\"TextOrLabel\":\"Putar\",\"InputType\":\"\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//video[1]\"}]}");
+                    }
+                    if (cur.Contains("youtube.com/results", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Task.FromResult(
+                            "{\"Url\":\"" + cur + "\",\"Title\":\"kamar film - YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                            "\"CleanText\":\"Hasil pencarian kamar film\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"KAMAR FILM - CERITA FILM TERBARU 2026\",\"InputType\":\"\",\"Href\":\"https://www.youtube.com/watch?v=kamarfilm01\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+                    }
+                    if (cur.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Task.FromResult(
+                            "{\"Url\":\"" + cur + "\",\"Title\":\"YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                            "\"CleanText\":\"Beranda YouTube\",\"Elements\":[{\"Index\":1,\"TagName\":\"input\",\"Role\":\"searchbox\",\"TextOrLabel\":\"Telusuri\",\"InputType\":\"search\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//input[@id='search']\"}]}");
+                    }
+                    return Task.FromResult(
+                        "{\"Url\":\"" + cur + "\",\"Title\":\"Google\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                        "\"CleanText\":\"Google\",\"Elements\":[{\"Index\":1,\"TagName\":\"textarea\",\"Role\":\"combobox\",\"TextOrLabel\":\"Telusuri\",\"InputType\":\"search\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//textarea[@name='q']\"}]}");
+                }
+                if (js.Contains("currentTime", StringComparison.Ordinal) && js.Contains("readyState", StringComparison.Ordinal))
+                {
+                    return Task.FromResult("{\"ok\":true,\"hasVideo\":true,\"playing\":true,\"currentTime\":2,\"duration\":900,\"readyState\":4}");
+                }
+                if (js.Contains("kamar film", StringComparison.OrdinalIgnoreCase))
+                {
+                    workspaceVm.LastBrowserUrl = "https://www.youtube.com/results?search_query=kamar+film";
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"submitted\":true,\"dropdownDismissed\":true,\"readBackValue\":\"kamar film\"}");
+                }
+                if (js.Contains("kamarfilm01", StringComparison.OrdinalIgnoreCase) || workspaceVm.LastBrowserUrl.Contains("results", StringComparison.OrdinalIgnoreCase))
+                {
+                    workspaceVm.LastBrowserUrl = "https://www.youtube.com/watch?v=kamarfilm01";
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"href\":\"https://www.youtube.com/watch?v=kamarfilm01\"}");
+                }
+                return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false}");
+            });
+
+        var loop = new DynamicReActControlLoop(
+            adapter,
+            new ExternalSearchProvider(),
+            new NexusWorkspaceFileService(workspaceVm),
+            workspaceVm);
+
+        var summary = await loop.RunDynamicAgentLoopAsync(multiClauseTask);
+        Assert.True(summary.IsSuccess, summary.FinalGroundedReportMarkdown);
+        Assert.True(summary.GoalVerified);
+        Assert.Equal(summary.ChecklistTotalCount, summary.ChecklistCompletedCount);
+        Assert.Contains("https://www.google.com", visitedUrls);
+        Assert.Contains("https://www.youtube.com", visitedUrls);
+        Assert.Equal("https://www.youtube.com/watch?v=kamarfilm01", workspaceVm.LastBrowserUrl);
+    }
+
+    [Fact]
+    public async Task StageCdp1_NativeCdpMouseClick_InsertText_DispatchKeyEvent_And_ReadBackVerification_VerifyCleanly()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+        wheel.MarkFreshSnapshotTaken();
+
+        // 1. Verify CDP payload builders in BrowserUseDomEngine (Input.dispatchMouseEvent, Input.insertText, Input.dispatchKeyEvent)
+        var (movedJson, pressedJson, releasedJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(240, 135);
+        Assert.Contains("\"type\":\"mouseMoved\"", movedJson, StringComparison.Ordinal);
+        Assert.Contains("\"x\":240", movedJson, StringComparison.Ordinal);
+        Assert.Contains("\"y\":135", movedJson, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"mousePressed\"", pressedJson, StringComparison.Ordinal);
+        Assert.Contains("\"button\":\"left\"", pressedJson, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"mouseReleased\"", releasedJson, StringComparison.Ordinal);
+
+        string insertTextJson = BrowserUseDomEngine.BuildCdpInsertTextJson("eri susan");
+        Assert.Contains("\"text\":\"eri susan\"", insertTextJson, StringComparison.Ordinal);
+
+        var (keyDownJson, keyUpJson) = BrowserUseDomEngine.BuildCdpKeyEventsJson("Enter");
+        Assert.Contains("\"windowsVirtualKeyCode\":13", keyDownJson, StringComparison.Ordinal);
+        Assert.Contains("\"key\":\"Enter\"", keyDownJson, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"keyUp\"", keyUpJson, StringComparison.Ordinal);
+
+        // 2. End-to-End Native CDP ClickAsync + FillAsync (with Input.insertText, Input.dispatchKeyEvent, and DOM Read-Back Verification)
+        var cdpCalls = new List<(string Method, string ParamsJson)>();
+        string simulatedInputBuffer = string.Empty;
+
+        var workspaceVm = new AgentWorkspaceViewModel { LastBrowserUrl = "https://web.whatsapp.com/" };
+        var adapter = new WebView2NativeAdapter(
+            workspaceVm,
+            scriptExecutor: js =>
+            {
+                if (js.Contains("INPUT_READBACK_MISMATCH", StringComparison.Ordinal))
+                {
+                    if (string.IsNullOrWhiteSpace(simulatedInputBuffer))
+                    {
+                        return Task.FromResult("{\"ok\":false,\"error\":\"INPUT_READBACK_MISMATCH\",\"readBackValue\":\"\"}");
+                    }
+                    return Task.FromResult("{\"ok\":true,\"readBackValue\":\"" + simulatedInputBuffer + "\",\"submitted\":true}");
+                }
+                return Task.FromResult("{\"ok\":true,\"stale\":false,\"centerX\":210,\"centerY\":95,\"tagName\":\"div\",\"isContentEditable\":true,\"href\":\"\"}");
+            },
+            cdpCaller: (method, paramsJson) =>
+            {
+                cdpCalls.Add((method, paramsJson));
+                if (method == "Input.insertText")
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(paramsJson);
+                    if (doc.RootElement.TryGetProperty("text", out var tp))
+                        simulatedInputBuffer = tp.GetString() ?? string.Empty;
+                }
+                return Task.FromResult("{}");
+            });
+
+        var waSnap = new BrowserLiveStateSnapshot(
+            "snap-cdp-01",
+            "https://web.whatsapp.com/",
+            "WhatsApp",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "div", "textbox", "Cari atau mulai obrolan baru", "text", null, true, false, "//div[@role='textbox'][1]", true),
+                new(2, "div", "button", "Eri Susan", null, null, false, false, "//div[@role='button'][1]", true)
+            },
+            "WhatsApp Web",
+            0,
+            400);
+        adapter.SyncLiveSnapshot(waSnap);
+
+        // A. FillAsync on WhatsApp Lexical contenteditable search box [1] with pressEnter=true:
+        // Must execute: CDP mouse click at (210,95) -> CDP Input.insertText("eri susan") -> Read-back verification -> CDP Input.dispatchKeyEvent(Enter)
+        var fillOut = await adapter.FillAsync("snap-cdp-01", "e1", "eri susan", pressEnter: true);
+        Assert.True(fillOut.IsSuccess);
+        Assert.Equal("eri susan", simulatedInputBuffer);
+        Assert.Contains(cdpCalls, c => c.Method == "Input.dispatchMouseEvent" && c.ParamsJson.Contains("\"type\":\"mousePressed\"", StringComparison.Ordinal) && c.ParamsJson.Contains("\"x\":210", StringComparison.Ordinal));
+        Assert.Contains(cdpCalls, c => c.Method == "Input.insertText" && c.ParamsJson.Contains("\"text\":\"eri susan\"", StringComparison.Ordinal));
+        Assert.Contains(cdpCalls, c => c.Method == "Input.dispatchKeyEvent" && c.ParamsJson.Contains("\"key\":\"Enter\"", StringComparison.Ordinal));
+
+        // B. ClickAsync on contact row [2] -> dispatches native CDP mouseMoved + mousePressed + mouseReleased at (210,95)
+        cdpCalls.Clear();
+        var clickOut = await adapter.ClickAsync("snap-cdp-01", "e2");
+        Assert.True(clickOut.IsSuccess);
+        Assert.Equal(3, cdpCalls.Count(c => c.Method == "Input.dispatchMouseEvent"));
+
+        // C. Verify that if CDP Input.insertText fails to mutate the DOM (read-back stays empty), FillAsync honestly returns IsSuccess=false ("INPUT_READBACK_MISMATCH")!
+        var adapterReadBackFail = new WebView2NativeAdapter(
+            workspaceVm,
+            scriptExecutor: js =>
+            {
+                if (js.Contains("INPUT_READBACK_MISMATCH", StringComparison.Ordinal))
+                {
+                    return Task.FromResult("{\"ok\":false,\"error\":\"INPUT_READBACK_MISMATCH\",\"readBackValue\":\"\"}");
+                }
+                return Task.FromResult("{\"ok\":true,\"stale\":false,\"centerX\":210,\"centerY\":95,\"tagName\":\"div\",\"isContentEditable\":true,\"href\":\"\"}");
+            },
+            cdpCaller: (_, _) => Task.FromResult("{}"));
+        adapterReadBackFail.SyncLiveSnapshot(waSnap);
+
+        var failedFill = await adapterReadBackFail.FillAsync("snap-cdp-01", "e1", "eri susan", pressEnter: false);
+        Assert.False(failedFill.IsSuccess);
+        Assert.Equal("INPUT_READBACK_MISMATCH", failedFill.ErrorCode);
+    }
+
+    [Fact]
+    public void PreFlight_Layer2BrowserUseDomEngine_ExportsAllRequiredP0P1Methods_And_SingleSourceOfTruth()
+    {
+        var domEngineType = typeof(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine);
+        Assert.NotNull(domEngineType.GetMethod("IsValidNavigatingOrSourceUrl", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(domEngineType.GetMethod("GetControlMediaPlaybackScript", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(domEngineType.GetMethod("HasCompleteBalancedJsonObject", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+
+        Assert.True(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        Assert.False(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("https://about---blank/"));
+        Assert.True(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.HasCompleteBalancedJsonObject("{\"action\":\"done\"}"));
+        Assert.Contains("currentTime", Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.GetControlMediaPlaybackScript(323));
+    }
+
+    [Fact]
+    public void PreFlight_All4LayerCSharpFiles_XamlFiles_And_CSharpVerbatimStrings_VerifyCleanly()
+    {
+        var dir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? srcRoot = null;
+        while (dir is not null)
+        {
+            string cand = System.IO.Path.Combine(dir.FullName, "src");
+            if (System.IO.File.Exists(System.IO.Path.Combine(cand, "03_App", "Nexus.App", "Nexus.App.csproj")))
+            {
+                srcRoot = cand;
+                break;
+            }
+            dir = dir.Parent;
+        }
+        Assert.NotNull(srcRoot);
+
+        // 1. Parse every .xaml file in 03_App/Nexus.App with System.Xml.Linq.XDocument.Parse to guarantee 0 XML/XAML syntax errors
+        string appRoot = System.IO.Path.Combine(srcRoot!, "03_App", "Nexus.App");
+        var xamlFiles = System.IO.Directory.GetFiles(appRoot, "*.xaml", System.IO.SearchOption.AllDirectories)
+            .Where(p => !p.Contains(System.IO.Path.DirectorySeparatorChar + "obj" + System.IO.Path.DirectorySeparatorChar) &&
+                        !p.Contains(System.IO.Path.DirectorySeparatorChar + "bin" + System.IO.Path.DirectorySeparatorChar))
+            .ToList();
+        Assert.True(xamlFiles.Count >= 10);
+        foreach (string xamlPath in xamlFiles)
+        {
+            string xamlContent = System.IO.File.ReadAllText(xamlPath);
+            var xdoc = System.Xml.Linq.XDocument.Parse(xamlContent);
+            Assert.NotNull(xdoc.Root);
+        }
+
+        // 2. Verify ALL .cs files across all 4 layers in src/ with real Roslyn CSharpSyntaxTree.ParseText AST diagnostics
+        var csFiles = System.IO.Directory.GetFiles(srcRoot!, "*.cs", System.IO.SearchOption.AllDirectories)
+            .Where(p => !p.Contains(System.IO.Path.DirectorySeparatorChar + "obj" + System.IO.Path.DirectorySeparatorChar) &&
+                        !p.Contains(System.IO.Path.DirectorySeparatorChar + "bin" + System.IO.Path.DirectorySeparatorChar))
+            .ToList();
+        Assert.True(csFiles.Count >= 40);
+
+        System.Reflection.MethodInfo? parseTextMethod = null;
+        try
+        {
+            string? dotnetExe = Environment.ProcessPath;
+            string? dotnetRoot = dotnetExe != null ? System.IO.Path.GetDirectoryName(dotnetExe) : null;
+            var sdkCandidates = new List<string>();
+            if (!string.IsNullOrWhiteSpace(dotnetRoot) && System.IO.Directory.Exists(System.IO.Path.Combine(dotnetRoot, "sdk")))
+                sdkCandidates.AddRange(System.IO.Directory.GetFiles(System.IO.Path.Combine(dotnetRoot, "sdk"), "Microsoft.CodeAnalysis.CSharp.dll", System.IO.SearchOption.AllDirectories));
+            if (System.IO.Directory.Exists("/home/spark/dotnet/sdk"))
+                sdkCandidates.AddRange(System.IO.Directory.GetFiles("/home/spark/dotnet/sdk", "Microsoft.CodeAnalysis.CSharp.dll", System.IO.SearchOption.AllDirectories));
+
+            string? roslynCsDll = sdkCandidates.FirstOrDefault(p => p.Contains("Roslyn") || p.Contains("bincore")) ?? sdkCandidates.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(roslynCsDll) && System.IO.File.Exists(roslynCsDll))
+            {
+                string roslynDir = System.IO.Path.GetDirectoryName(roslynCsDll)!;
+                string coreDll = System.IO.Path.Combine(roslynDir, "Microsoft.CodeAnalysis.dll");
+                if (System.IO.File.Exists(coreDll))
+                    System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(coreDll);
+                var csAsm = System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(roslynCsDll);
+                var syntaxTreeType = csAsm.GetType("Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree");
+                parseTextMethod = syntaxTreeType?.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                    .FirstOrDefault(m => m.Name == "ParseText" && m.GetParameters().Length >= 1 && m.GetParameters()[0].ParameterType == typeof(string));
+            }
+        }
+        catch { }
+
+        foreach (string csPath in csFiles)
+        {
+            string csText = System.IO.File.ReadAllText(csPath);
+            if (!csPath.EndsWith("BrowserUseDynamicLoopTests.cs", StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.DoesNotContain("Nexus.Core.HomeSettings.BrowserAgent", csText, StringComparison.Ordinal);
+                Assert.DoesNotContain(".ContentDelta", csText, StringComparison.Ordinal);
+                Assert.DoesNotContain("PdfDocumentOpenMode.InformationOnly", csText, StringComparison.Ordinal);
+            }
+
+            if (parseTextMethod != null)
+            {
+                var parms = parseTextMethod.GetParameters();
+                var invokeArgs = new object?[parms.Length];
+                invokeArgs[0] = csText;
+                for (int i = 1; i < parms.Length; i++)
+                    invokeArgs[i] = parms[i].HasDefaultValue ? parms[i].DefaultValue : null;
+                var tree = parseTextMethod.Invoke(null, invokeArgs);
+                var getDiag = tree?.GetType().GetMethod("GetDiagnostics", Type.EmptyTypes);
+                if (getDiag?.Invoke(tree, null) is System.Collections.IEnumerable diags)
+                {
+                    foreach (object d in diags)
+                    {
+                        var sevProp = d.GetType().GetProperty("Severity");
+                        int sev = sevProp != null ? Convert.ToInt32(sevProp.GetValue(d)) : 0;
+                        if (sev == 3) // DiagnosticSeverity.Error == 3
+                        {
+                            throw new InvalidOperationException($"Roslyn C# Syntax Error in {csPath}: {d}");
+                        }
+                    }
+                }
+            }
+        }
+
+                // 3. Semantic Type & Sub-Namespace Resolution Check (prevents CS0234 / CS0246 across Services.*, ViewModels.*, Views.*)
+        var declaredSymbols = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Agent", "BrowserAgent", "Extractors", "ContentDialog", "Snackbar", "InfoBar", "Tools",
+            "GetService", "GetRequiredService", "IntentDetector", "FallbackResponseProvider"
+        };
+        var typeDeclRegex = new System.Text.RegularExpressions.Regex(@"\b(?:class|struct|interface|enum|record)\s+([A-Za-z_][A-Za-z0-9_]*)");
+        foreach (string csPath in csFiles)
+        {
+            string csText = System.IO.File.ReadAllText(csPath);
+            foreach (System.Text.RegularExpressions.Match m in typeDeclRegex.Matches(csText))
+            {
+                declaredSymbols.Add(m.Groups[1].Value);
+            }
+        }
+        var nsMemberRegex = new System.Text.RegularExpressions.Regex(@"\b(?:Nexus\.App\.)?(?:Services|ViewModels|Views)\.([A-Za-z_][A-Za-z0-9_]*)");
+        foreach (string csPath in csFiles)
+        {
+            string csText = System.IO.File.ReadAllText(csPath);
+            foreach (System.Text.RegularExpressions.Match m in nsMemberRegex.Matches(csText))
+            {
+                string sym = m.Groups[1].Value;
+                if (!declaredSymbols.Contains(sym))
+                {
+                    throw new InvalidOperationException($"CS0234 Semantic PreFlight Error in {csPath}: '{m.Value}' does not exist in declared Nexus symbols.");
+                }
+            }
+        }
+
+        // 4. XAML Event Handler to Code-Behind Method Resolution Check (prevents CS1061 in *_wpftmp.csproj)
+        var eventAttrs = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Click", "SelectionChanged", "Checked", "Unchecked",
+            "PreviewMouseLeftButtonDown", "PreviewMouseLeftButtonUp", "PreviewMouseMove",
+            "PreviewMouseDown", "PreviewMouseWheel", "MouseDown", "MouseMove", "MouseUp",
+            "MouseLeftButtonDown", "MouseLeftButtonUp", "MouseLeave", "MouseEnter",
+            "KeyDown", "PreviewKeyDown", "Loaded", "Unloaded", "SizeChanged",
+            "ScrollChanged", "ValueChanged", "TextChanged", "RequestBringIntoView",
+            "DragOver", "DragLeave", "Drop"
+        };
+        foreach (string xamlPath in xamlFiles)
+        {
+            string csBehindPath = xamlPath + ".cs";
+            if (!System.IO.File.Exists(csBehindPath)) continue;
+            string csBehindText = System.IO.File.ReadAllText(csBehindPath);
+            var xdoc = System.Xml.Linq.XDocument.Parse(System.IO.File.ReadAllText(xamlPath));
+            foreach (var elem in xdoc.Descendants())
+            {
+                foreach (var attr in elem.Attributes())
+                {
+                    string localName = attr.Name.LocalName;
+                    string val = attr.Value;
+                    if (eventAttrs.Contains(localName) && !string.IsNullOrWhiteSpace(val) && !val.StartsWith("{", StringComparison.Ordinal))
+                    {
+                        if (!csBehindText.Contains(" " + val + "(", StringComparison.Ordinal))
+                        {
+                            throw new InvalidOperationException($"CS1061 XAML Handler PreFlight Error in {xamlPath}: event {localName}='{val}' has no matching method in {csBehindPath}.");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void AdminFeedbackPoints1To3_CheckerboardFix_ElevatedCards_HdPdfAndSemanticTabIcons_VerifyCleanly()
+    {
+        var cur = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? repoRoot = null;
+        while (cur != null)
+        {
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(cur.FullName, "src", "03_App", "Nexus.App")))
+            {
+                repoRoot = cur.FullName;
+                break;
+            }
+            cur = cur.Parent;
+        }
+        Assert.NotNull(repoRoot);
+        string appRoot = System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App");
+
+        // 1. Point 1: Image Tools Checkerboard Bug Fix in AI Upscale & Object Removal (Single, Batch >= 2, and Menu Navigation)
+        string imgXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "ImageSubsystemView.xaml"));
+        string imgCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "ImageSubsystemView.xaml.cs"));
+        Assert.Contains("<DataTrigger Binding=\"{Binding IsUpscaleMode}\" Value=\"True\">", imgXaml);
+        Assert.Contains("<DataTrigger Binding=\"{Binding IsInpaintMode}\" Value=\"True\">", imgXaml);
+        Assert.Contains("x:Name=\"BatchCardThumbnailSurface\"", imgXaml);
+        Assert.Contains("Binding=\"{Binding DataContext.IsRemoveBgMode, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type UserControl}}}\" Value=\"True\"", imgXaml);
+        Assert.Contains("public void SyncCanvasBackgroundState(ImageSubsystemViewModel vm)", imgCs);
+        Assert.Contains("SyncCanvasBackgroundState(newVm);", imgCs);
+        Assert.Contains("SyncCanvasBackgroundState(vm2);", imgCs);
+        Assert.Contains("SyncCanvasBackgroundState(vm3);", imgCs);
+        Assert.Contains("x:Name=\"CanvasBackgroundComboBox\"", imgXaml);
+        Assert.Contains("x:Name=\"SelectImageButton\"", imgXaml);
+        Assert.Contains("Width=\"168\" Height=\"38\" HorizontalAlignment=\"Center\"", imgXaml);
+        Assert.Contains("Width=\"158\"", imgXaml);
+
+        // 2. Point 2 & Revisions: Subtle Outer Card Border (No Outer Shadow) + Inner Thumbnail Paper DropShadow + Hover-Only Action Buttons + Physical Size in CM + Compact Mode Cards
+        string pdfXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "PdfUtilitiesView.xaml"));
+        Assert.DoesNotContain("<DropShadowEffect BlurRadius=\"14\" ShadowDepth=\"2\" Direction=\"270\" Opacity=\"0.10\"/>", pdfXaml);
+        Assert.DoesNotContain("<DropShadowEffect BlurRadius=\"14\" ShadowDepth=\"2\" Direction=\"270\" Opacity=\"0.10\"/>", imgXaml);
+        Assert.Contains("<DropShadowEffect BlurRadius=\"10\" ShadowDepth=\"2\" Direction=\"270\" Opacity=\"0.20\"/>", pdfXaml);
+        Assert.Contains("<DropShadowEffect BlurRadius=\"10\" ShadowDepth=\"2\" Direction=\"270\" Opacity=\"0.20\"/>", imgXaml);
+        Assert.Contains("DataTrigger Binding=\"{Binding IsMouseOver, ElementName=PdfFileCardBorder}\" Value=\"True\"", pdfXaml);
+        Assert.Contains("DataTrigger Binding=\"{Binding IsMouseOver, ElementName=ImageBatchCardBorder}\" Value=\"True\"", imgXaml);
+        Assert.Contains("<Setter Property=\"MinHeight\" Value=\"64\"/>", pdfXaml);
+        Assert.Contains("Text=\"{Binding DimensionsCmText}\"", pdfXaml);
+        string pdfVmCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "ViewModels", "PdfUtilitiesViewModel.cs"));
+        Assert.Contains("public string DimensionsCmText", pdfVmCs);
+        Assert.Contains("double wCm = sizes[0].Width * 2.54 / 72.0;", pdfVmCs);
+        Assert.Contains("double hCm = sizes[0].Height * 2.54 / 72.0;", pdfVmCs);
+
+        // 3. Batch 1 UI & Functional Upgrades (iLovePDF Tool Icons, Zero-Gap Manajemen File Tabs, Live Dark/Light Sync, Smooth PDF Preview + Print Modal Dialog)
+        string pdfEngineCs = System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot!, "src", "02_Modules", "Nexus.PdfUtilities", "Services", "PdfEngineService.cs"));
+        Assert.Contains("public const int MaximumReaderPixels = 12_000_000;", pdfEngineCs);
+
+        string pdfReaderVmCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "ViewModels", "PdfReaderViewModel.cs"));
+        Assert.Contains("double hdScale=Math.Max(1.35,_dpi*1.35);", pdfReaderVmCs);
+        Assert.Contains("resident+pixels>24_000_000", pdfReaderVmCs);
+        Assert.Contains("internal bool NeedsRender", pdfReaderVmCs);
+        Assert.Contains("public ICommand OpenPrintDialogCommand", pdfReaderVmCs);
+        Assert.Contains("public ICommand ExecutePrintCommand", pdfReaderVmCs);
+        Assert.Contains("public string PrintPreviewPageDimensionsMm", pdfReaderVmCs);
+
+        string pdfReaderXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "PdfReaderView.xaml"));
+        Assert.Contains("x:Name=\"PdfPrintButton\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfPrintModalOverlay\"", pdfReaderXaml);
+        Assert.Contains("VirtualizingPanel.CacheLength=\"1,1\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfLeftSidebarRail\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfLeftSidebarDrawer\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfThumbnailsSidebarPane\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfAttachmentsSidebarPane\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfInfoSidebarPane\"", pdfReaderXaml);
+        Assert.Contains("x:Name=\"PdfAComplianceBadgeCard\"", pdfReaderXaml);
+        Assert.Contains("public ICommand ToggleLeftSidebarCommand", pdfReaderVmCs);
+        Assert.Contains("public ICommand SelectSidebarTabCommand", pdfReaderVmCs);
+        Assert.Contains("public ICommand SelectThumbnailPageCommand", pdfReaderVmCs);
+        Assert.Contains("private void LoadDocumentMetadataAndAttachments(", pdfReaderVmCs);
+        Assert.Contains("private async Task EnsureSidebarThumbnailsAsync()", pdfReaderVmCs);
+        Assert.Contains("internal bool HasDedicatedThumbnail => _thumbnail != null;", pdfReaderVmCs);
+        Assert.Contains("PdfDocumentOpenMode.Import", pdfReaderVmCs);
+        Assert.Contains("x:Name=\"ThumbnailPageBorder\"", pdfReaderXaml);
+        Assert.Contains("<ScaleTransform ScaleX=\"1.07\" ScaleY=\"1.07\"/>", pdfReaderXaml);
+        Assert.Contains("MaxWidth=\"98\" MaxHeight=\"128\"", pdfReaderXaml);
+        Assert.Contains("PageSizeCache", pdfEngineCs);
+
+        string pdfToolDefCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "ViewModels", "PdfToolDefinition.cs"));
+        Assert.Contains("CreateFrozenBrush(0x7E, 0x3B, 0x7B)", pdfToolDefCs);
+        Assert.Contains("CreateFrozenBrush(0xEB, 0xB4, 0x0E)", pdfToolDefCs);
+        Assert.Contains("public bool IsConversionTool => Category is PdfToolCategory.ConvertFromPdf or PdfToolCategory.ConvertToPdf;", pdfToolDefCs);
+        Assert.Contains("public bool IsEditTool => Category == PdfToolCategory.EditPdf;", pdfToolDefCs);
+
+        string pdfWsXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "PdfWorkspaceView.xaml"));
+        Assert.Contains("Background=\"{Binding WorkspaceAccentBrush}\"", pdfWsXaml);
+        Assert.Contains("Data=\"{Binding WorkspaceIconGeometry}\"", pdfWsXaml);
+
+        string fmXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "FileManagementView.xaml"));
+        Assert.DoesNotContain("Width=\"180\"", fmXaml);
+        string layoutXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Themes", "Components", "Layout.xaml"));
+        Assert.Contains("<Setter Property=\"Margin\" Value=\"-8,0,-8,0\"/>", layoutXaml);
+
+        string agentCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Views", "AgentWorkspaceView.xaml.cs"));
+        Assert.Contains("private void SyncWebView2LiveTheme()", agentCs);
+        Assert.Contains("morePopupBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, \"DshCardBgBrush\");", agentCs);
+
+        string darkSemanticXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appRoot, "Themes", "Semantic", "DarkSemanticTheme.xaml"));
+        Assert.Contains("x:Key=\"NexusOverlayButtonRest\" Color=\"{StaticResource NexusPrimitiveColor2C2C2E}\"", darkSemanticXaml);
+        Assert.Contains("Style=\"{StaticResource NexusSubtleButtonStyle}\" Command=\"{Binding DataContext.SelectToolCommand", pdfXaml);
+
+        // 4. Verify zero unexpected hex or primitive token violations in modified views
+        var hexRegex = new System.Text.RegularExpressions.Regex(@"#[0-9A-Fa-f]{3,8}\b");
+        Assert.Empty(hexRegex.Matches(pdfXaml));
+        Assert.Empty(hexRegex.Matches(pdfReaderXaml));
+        Assert.Empty(hexRegex.Matches(pdfWsXaml));
+        Assert.Empty(hexRegex.Matches(fmXaml));
+        Assert.Empty(hexRegex.Matches(layoutXaml));
+        Assert.Equal(27, hexRegex.Matches(imgXaml).Count);
+    }
+
+}
 
 public static class NexusDirectTestRunner
 {

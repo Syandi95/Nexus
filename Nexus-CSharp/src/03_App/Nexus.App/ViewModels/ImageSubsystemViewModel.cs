@@ -2311,7 +2311,12 @@ namespace Nexus.App.ViewModels
             {
                 StatusText = "Folder file asli tidak valid.";
                 DetailText = "Pastikan file asli masih tersedia.";
+                _notificationService?.ShowWarning("Folder Output Tidak Valid", "Pastikan folder output atau lokasi file asli tersedia.");
                 return;
+            }
+            if (!Directory.Exists(sourceDir))
+            {
+                try { Directory.CreateDirectory(sourceDir); } catch { }
             }
 
             var baseName = Path.GetFileNameWithoutExtension(InputImagePath);
@@ -2357,6 +2362,7 @@ namespace Nexus.App.ViewModels
             {
                 StatusText = "Gagal menyimpan.";
                 DetailText = ex.Message;
+                _notificationService?.ShowError("Gagal Menyimpan", ex.Message);
             }
         }
 
