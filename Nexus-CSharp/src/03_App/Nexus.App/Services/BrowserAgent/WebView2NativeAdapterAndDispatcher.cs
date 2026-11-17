@@ -69,10 +69,17 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
     private Func<string, string, Task<string>>? ResolveEffectiveCdpCaller()
         => _cdpCaller ?? BrowserAgentRuntimeSettings.Current.LiveCdpCaller;
 
+    private bool _snapshotInvalidatedByHumanTakeover;
+
     public void SyncLiveSnapshot(BrowserLiveStateSnapshot snapshot)
     {
         if (snapshot is null)
             return;
+
+        if (!BrowserAgentRuntimeSettings.Current.TakeTheWheel.ResumeSnapshotRequired)
+        {
+            _snapshotInvalidatedByHumanTakeover = false;
+        }
 
         if (!string.IsNullOrWhiteSpace(snapshot.SnapshotId))
             _currentSnapshotId = snapshot.SnapshotId;
@@ -121,6 +128,7 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
         }
         catch (InvalidOperationException ex)
         {
+            _snapshotInvalidatedByHumanTakeover = true;
             barrierLease = null;
             BrowserAgentRuntimeSettings.Current.LastErrorState = ex.Message;
             BrowserAgentRuntimeSettings.Current.RecordLog($"BLOCKED {actionName} by BrowserActionBarrier: {ex.Message}");
@@ -546,9 +554,38 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
             // Tahap 1 Native CDP + Batch 1A Single Execution Path:
             // When effectiveCdp (CoreWebView2.CallDevToolsProtocolMethodAsync) is attached, prepare & validate coordinates via GetPrepareElementForCdpActionScript,
             // then dispatch hardware-trusted Input.dispatchMouseEvent (mouseMoved -> mousePressed -> mouseReleased)!
+            if (_snapshotInvalidatedByHumanTakeover && BrowserAgentRuntimeSettings.Current.TakeTheWheel.ResumeSnapshotRequired)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.click", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                    "Kendali baru dikembalikan dari pengguna (Return Control); agen wajib mengambil snapshot live terbaru sebelum mengeksekusi aksi.",
+                    "RESUME_SNAPSHOT_REQUIRED");
+            }
+
             var effectiveJs = ResolveEffectiveScriptExecutor();
             var effectiveCdp = ResolveEffectiveCdpCaller();
             int elemIdx = node?.Index ?? ParseElementIndex(elem.RefId);
+            bool isCrossOriginIframeCdpNode = (node?.CompoundInfo ?? string.Empty).Contains("backend_node_id=", StringComparison.OrdinalIgnoreCase);
+            if (isCrossOriginIframeCdpNode && effectiveCdp is not null)
+            {
+                double iframeCx = 640;
+                double iframeCy = 360;
+                string compStr = node?.CompoundInfo ?? string.Empty;
+                var mCx = Regex.Match(compStr, @"center_x=(\d+)");
+                var mCy = Regex.Match(compStr, @"center_y=(\d+)");
+                if (mCx.Success && double.TryParse(mCx.Groups[1].Value, out double parsedCx)) iframeCx = parsedCx;
+                if (mCy.Success && double.TryParse(mCy.Groups[1].Value, out double parsedCy)) iframeCy = parsedCy;
+                var (moveJson, pressJson, releaseJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(iframeCx, iframeCy);
+                await effectiveCdp("Input.dispatchMouseEvent", moveJson);
+                await effectiveCdp("Input.dispatchMouseEvent", pressJson);
+                await effectiveCdp("Input.dispatchMouseEvent", releaseJson);
+                string nextSnapIframe = NextSnapshotId();
+                BrowserAgentRuntimeSettings.Current.LastToolExecution = $"browser.click [CDP Cross-Origin Iframe @ ({iframeCx:F0},{iframeCy:F0})]";
+                BrowserAgentRuntimeSettings.Current.RecordLog($"browser.click [{elem.RefId}] '{elem.Name}' (Cross-Origin Iframe CDP) -> {_currentUrl}");
+                return new BrowserActionOutcome(
+                    true, "browser.click", urlBefore, _currentUrl, _currentTitle, nextSnapIframe,
+                    $"Berhasil mengklik elemen iframe lintas-batas [{elem.RefId}] '{elem.Name}' via CDP. Snapshot baru: {nextSnapIframe}.");
+            }
             if (effectiveJs is not null && elemIdx > 0)
             {
                 string jsCode = effectiveCdp is not null
@@ -557,7 +594,9 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                         node?.XPath ?? string.Empty,
                         "click",
                         node?.TagName ?? elem.TagName,
-                        node?.Role ?? elem.Role)
+                        node?.Role ?? elem.Role,
+                        BrowserAgentRuntimeSettings.Current.LastCursorX,
+                        BrowserAgentRuntimeSettings.Current.LastCursorY)
                     : BrowserUseDomEngine.GetExecuteElementActionScript(
                         elemIdx,
                         node?.XPath ?? string.Empty,
@@ -615,6 +654,12 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                 {
                     if (cdpCenterX <= 0) cdpCenterX = 120;
                     if (cdpCenterY <= 0) cdpCenterY = 80;
+                    BrowserAgentRuntimeSettings.Current.LastCursorX = cdpCenterX;
+                    BrowserAgentRuntimeSettings.Current.LastCursorY = cdpCenterY;
+                    if (_scriptExecutor is null && _cdpCaller is null)
+                    {
+                        await Task.Delay(350, ct);
+                    }
                     var (moveJson, pressJson, releaseJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(cdpCenterX, cdpCenterY);
                     await effectiveCdp("Input.dispatchMouseEvent", moveJson);
                     await effectiveCdp("Input.dispatchMouseEvent", pressJson);
@@ -793,6 +838,14 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
             // 3) Insert text via CDP Input.insertText (trusted by WhatsApp Lexical, YouTube Polymer, React),
             // 4) Read-back DOM value via GetVerifyElementPostCdpInputScript,
             // 5) If pressEnter is true, dispatch native Enter via CDP Input.dispatchKeyEvent!
+            if (_snapshotInvalidatedByHumanTakeover && BrowserAgentRuntimeSettings.Current.TakeTheWheel.ResumeSnapshotRequired)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.fill", urlBefore, urlBefore, _currentTitle, _currentSnapshotId,
+                    "Kendali baru dikembalikan dari pengguna (Return Control); agen wajib mengambil snapshot live terbaru sebelum mengeksekusi aksi.",
+                    "RESUME_SNAPSHOT_REQUIRED");
+            }
+
             var effectiveJs = ResolveEffectiveScriptExecutor();
             var effectiveCdp = ResolveEffectiveCdpCaller();
             int elemIdx = node?.Index ?? ParseElementIndex(elementRef);
@@ -805,7 +858,9 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                         node?.XPath ?? string.Empty,
                         "input",
                         node?.TagName ?? elem.TagName,
-                        node?.Role ?? elem.Role);
+                        node?.Role ?? elem.Role,
+                        BrowserAgentRuntimeSettings.Current.LastCursorX,
+                        BrowserAgentRuntimeSettings.Current.LastCursorY);
                     string prepRes;
                     try
                     {
@@ -848,7 +903,13 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
                             $"Gagal memverifikasi respon persiapan CDP 'fill' pada [{elementRef}]: {ex.Message}", "JS_INVALID_JSON_RESPONSE");
                     }
 
-                    // 1. Place native Chromium caret at (cx, cy) via CDP Input.dispatchMouseEvent
+                    // 1. Allow 350ms for #__nexus_virtual_cursor Bezier arc glide in live WebView2, then place caret at (cx, cy) via CDP
+                    BrowserAgentRuntimeSettings.Current.LastCursorX = cx;
+                    BrowserAgentRuntimeSettings.Current.LastCursorY = cy;
+                    if (_scriptExecutor is null && _cdpCaller is null)
+                    {
+                        await Task.Delay(350, ct);
+                    }
                     var (moveJson, pressJson, releaseJson) = BrowserUseDomEngine.BuildCdpMouseClickEventsJson(cx, cy);
                     await effectiveCdp("Input.dispatchMouseEvent", moveJson);
                     await effectiveCdp("Input.dispatchMouseEvent", pressJson);
@@ -1211,14 +1272,49 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
 
         using (barrierLease)
         {
-            string targetText = text ?? string.Empty;
-            var effectiveJs = ResolveEffectiveScriptExecutor();
-            if (effectiveJs is not null && !string.IsNullOrWhiteSpace(targetText))
+            string targetText = (text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(targetText))
             {
-                try { await effectiveJs(BrowserUseDomEngine.GetScrollToTextScript(targetText)); } catch { }
+                return new BrowserActionOutcome(
+                    false, "browser.scroll_to_text", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    "Teks target scroll_to_text tidak boleh kosong.",
+                    ErrorCode: "EMPTY_TARGET_TEXT");
             }
 
-            BrowserAgentRuntimeSettings.Current.RecordLog($"browser.scroll_to_text ('{targetText}')");
+            var effectiveJs = ResolveEffectiveScriptExecutor();
+            if (effectiveJs is null)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.scroll_to_text", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    $"Bridge JavaScript WebView2 belum terhubung untuk mencari teks '{targetText}'.",
+                    ErrorCode: "SCROLL_BRIDGE_UNAVAILABLE");
+            }
+
+            string rawScrollJson = string.Empty;
+            try
+            {
+                rawScrollJson = await effectiveJs(BrowserUseDomEngine.GetScrollToTextScript(targetText)) ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                return new BrowserActionOutcome(
+                    false, "browser.scroll_to_text", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    $"Gagal menjalankan scroll_to_text('{targetText}'): {ex.Message}",
+                    ErrorCode: "SCROLL_EXECUTION_ERROR");
+            }
+
+            bool foundInDom = rawScrollJson.Contains("\"found\":true", StringComparison.OrdinalIgnoreCase) ||
+                              rawScrollJson.Contains("\"ok\":true", StringComparison.OrdinalIgnoreCase);
+            if (!foundInDom)
+            {
+                BrowserAgentRuntimeSettings.Current.RecordLog($"browser.scroll_to_text ('{targetText}') -> TEXT_NOT_FOUND");
+                return new BrowserActionOutcome(
+                    false, "browser.scroll_to_text", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                    $"Teks '{targetText}' tidak ditemukan pada halaman aktif.",
+                    ErrorCode: "TEXT_NOT_FOUND");
+            }
+
+            BrowserAgentRuntimeSettings.Current.RecordLog($"browser.scroll_to_text ('{targetText}') -> FOUND");
             return new BrowserActionOutcome(
                 true, "browser.scroll_to_text", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
                 $"Menggulir halaman ke teks '{targetText}'.");
@@ -1228,10 +1324,55 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
     public async Task<BrowserActionOutcome> WaitAsync(int milliseconds = 600, string? waitForText = null, CancellationToken ct = default)
     {
         int clamped = Math.Clamp(milliseconds, 100, 10000);
-        await Task.Delay(clamped, ct);
+        if (string.IsNullOrWhiteSpace(waitForText))
+        {
+            await Task.Delay(clamped, ct);
+            return new BrowserActionOutcome(
+                true, "browser.wait", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                $"Menunggu {clamped} ms selesai.");
+        }
+
+        string targetWait = waitForText.Trim();
+        var effectiveJs = ResolveEffectiveScriptExecutor();
+        if (effectiveJs is null)
+        {
+            return new BrowserActionOutcome(
+                false, "browser.wait", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                $"Bridge JavaScript WebView2 belum terhubung untuk memverifikasi kemunculan teks '{targetWait}'.",
+                ErrorCode: "WAIT_BRIDGE_UNAVAILABLE");
+        }
+
+        var sw = Stopwatch.StartNew();
+        int stepDelay = Math.Clamp(clamped / 4, 50, 200);
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                string rawSearch = await effectiveJs(BrowserUseDomEngine.GetSearchPageScript(targetWait, 1)) ?? string.Empty;
+                if (rawSearch.Contains("\"found\":true", StringComparison.OrdinalIgnoreCase) ||
+                    (rawSearch.Contains("\"total\":", StringComparison.OrdinalIgnoreCase) &&
+                     !rawSearch.Contains("\"total\":0", StringComparison.OrdinalIgnoreCase)))
+                {
+                    BrowserAgentRuntimeSettings.Current.RecordLog($"browser.wait ('{targetWait}') -> VERIFIED in {sw.ElapsedMilliseconds}ms");
+                    return new BrowserActionOutcome(
+                        true, "browser.wait", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                        $"Teks '{targetWait}' terverifikasi muncul pada DOM setelah {sw.ElapsedMilliseconds} ms.");
+                }
+            }
+            catch { }
+
+            if (sw.ElapsedMilliseconds >= clamped)
+                break;
+
+            await Task.Delay(stepDelay, ct);
+        }
+
+        BrowserAgentRuntimeSettings.Current.RecordLog($"browser.wait ('{targetWait}') -> WAIT_CONDITION_TIMEOUT ({clamped}ms)");
         return new BrowserActionOutcome(
-            true, "browser.wait", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
-            $"Menunggu {clamped} ms selesai.");
+            false, "browser.wait", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+            $"Waktu tunggu habis ({clamped} ms): teks '{targetWait}' belum muncul pada halaman aktif.",
+            ErrorCode: "WAIT_CONDITION_TIMEOUT");
     }
 
     public async Task<BrowserDownloadOutcome> DownloadAsync(
@@ -1385,12 +1526,57 @@ public sealed class WebView2NativeAdapter : IBrowserAutomation
         }
     }
 
-    public Task<BrowserActionOutcome> StopAsync()
+    public async Task<BrowserActionOutcome> StopAsync()
     {
-        BrowserAgentRuntimeSettings.Current.CurrentAgentActivity = "Stopped by user";
-        BrowserAgentRuntimeSettings.Current.RecordLog("browser.stop -> Eksekusi agen dihentikan.");
-        return Task.FromResult(new BrowserActionOutcome(
-            true, "browser.stop", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId, "Eksekusi browser dihentikan."));
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        bool stoppedAny = false;
+
+        if (cfg.CancelActiveAgentRunCallback is { } cancelRun)
+        {
+            try
+            {
+                cancelRun();
+                stoppedAny = true;
+            }
+            catch { }
+        }
+
+        if (cfg.StopLiveWebView2NavigationCallback is { } stopWv)
+        {
+            try
+            {
+                if (await stopWv())
+                    stoppedAny = true;
+            }
+            catch { }
+        }
+
+        var effectiveJs = ResolveEffectiveScriptExecutor();
+        if (effectiveJs is not null)
+        {
+            try
+            {
+                string jsOut = await effectiveJs("(function(){ try { if (typeof window.stop === 'function') window.stop(); return 'OK'; } catch(e) { return 'ERR'; } })()") ?? string.Empty;
+                if (jsOut.Contains("OK", StringComparison.OrdinalIgnoreCase))
+                    stoppedAny = true;
+            }
+            catch { }
+        }
+
+        if (!stoppedAny)
+        {
+            cfg.RecordLog("browser.stop -> STOP_NOT_BOUND");
+            return new BrowserActionOutcome(
+                false, "browser.stop", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+                "Tidak ada sesi eksekusi aktif atau bridge WebView2 yang terhubung untuk dihentikan.",
+                ErrorCode: "STOP_NOT_BOUND");
+        }
+
+        cfg.CurrentAgentActivity = "Stopped by user";
+        cfg.RecordLog("browser.stop -> Eksekusi agen & navigasi WebView2 dihentikan.");
+        return new BrowserActionOutcome(
+            true, "browser.stop", _currentUrl, _currentUrl, _currentTitle, _currentSnapshotId,
+            "Eksekusi browser dan agen berhasil dihentikan.");
     }
 
     private void ParseSnapshotElementsFromDomText(string? rawDom, string snapshotId)
@@ -1844,7 +2030,12 @@ public sealed record AgentLoopExecutionSummary(
     BrowserAgentBenchmarkRecord Benchmark,
     bool GoalVerified = false,
     int ChecklistCompletedCount = 0,
-    int ChecklistTotalCount = 0);
+    int ChecklistTotalCount = 0,
+    IReadOnlyList<StepStageTimingLog>? StepTimings = null,
+    int TotalLlmCalls = 0,
+    int FastPathStepsExecuted = 0,
+    int FastPathFallbackCount = 0,
+    double PlanUpdateNullComplianceRate = 1.0);
 
 public sealed class AgentOrchestrator
 {

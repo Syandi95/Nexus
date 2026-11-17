@@ -722,9 +722,11 @@
                                                     <!-- Minimalist Header: "Completed in Xs v" (No gray box, no blue hover rectangle) -->
                                                     <Button Command="{Binding ToggleThinkingCollapseCommand}"
                                                             Style="{StaticResource NexusSubtleButtonStyle}"
+                                                            Height="24"
+                                                            MinHeight="24"
                                                             Background="Transparent"
                                                             BorderThickness="0"
-                                                            Padding="2,3"
+                                                            Padding="2,1"
                                                             HorizontalAlignment="Left"
                                                             Cursor="Hand">
                                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -752,6 +754,100 @@
                                                         </StackPanel>
                                                     </Button>
 
+                                                    <!-- Codex / ChatGPT Expandable Step-by-Step Browser Timeline (Gambar 4 image_ddc42a.png 1:1 Typography & Spacing) -->
+                                                    <Border Margin="7,4,0,8"
+                                                            Padding="14,3,0,3"
+                                                            Background="Transparent"
+                                                            BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                            BorderThickness="1,0,0,0">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding HasCodexBrowserSteps}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsThinkingCollapsed}" Value="False"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <ItemsControl ItemsSource="{Binding CodexBrowserSteps}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <StackPanel Margin="0,2,0,2">
+                                                                        <Button Command="{Binding ToggleStepDetailCommand}"
+                                                                                Style="{StaticResource NexusSubtleButtonStyle}"
+                                                                                Height="28"
+                                                                                MinHeight="28"
+                                                                                Background="Transparent"
+                                                                                BorderThickness="0"
+                                                                                Padding="4,3"
+                                                                                HorizontalAlignment="Left"
+                                                                                Cursor="Hand"
+                                                                                ToolTip="Klik untuk melihat detail status browser / elemen fokus pada langkah ini">
+                                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                                <Grid Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Center">
+                                                                                    <Path Width="14" Height="14"
+                                                                                          Stretch="Uniform"
+                                                                                          Stroke="{DynamicResource DshTextSecondaryBrush}"
+                                                                                          StrokeThickness="1.3"
+                                                                                          Opacity="0.82"
+                                                                                          SnapsToDevicePixels="True"
+                                                                                          UseLayoutRounding="True"
+                                                                                          HorizontalAlignment="Center"
+                                                                                          VerticalAlignment="Center"
+                                                                                          Data="M 2,3 H 14 A 1.5,1.5 0 0 1 15.5,4.5 V 11.5 A 1.5,1.5 0 0 1 14,13 H 9.5 M 2,6 H 15.5 M 2,3 A 1.5,1.5 0 0 0 0.5,4.5 V 11.5 A 1.5,1.5 0 0 0 2,13 H 4.5 M 5.5,10.5 L 9.5,12.5 L 7.5,13.5 L 6.5,15.5 Z">
+                                                                                        <Path.Style>
+                                                                                            <Style TargetType="Path">
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                                <Style.Triggers>
+                                                                                                    <DataTrigger Binding="{Binding HasFaviconImageUrl}" Value="True">
+                                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                    </DataTrigger>
+                                                                                                </Style.Triggers>
+                                                                                            </Style>
+                                                                                        </Path.Style>
+                                                                                    </Path>
+                                                                                    <Image Width="16" Height="16"
+                                                                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                                                                           SnapsToDevicePixels="True"
+                                                                                           UseLayoutRounding="True"
+                                                                                           HorizontalAlignment="Center"
+                                                                                           VerticalAlignment="Center"
+                                                                                           Source="{Binding FaviconImageUrl, TargetNullValue={x:Null}}"
+                                                                                           Visibility="{Binding HasFaviconImageUrl, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                                </Grid>
+                                                                                <TextBlock Text="{Binding StepTitle}"
+                                                                                           FontSize="13"
+                                                                                           FontWeight="Normal"
+                                                                                           Foreground="{DynamicResource DshTextSecondaryBrush}"
+                                                                                           Opacity="0.88"
+                                                                                           VerticalAlignment="Center"/>
+                                                                            </StackPanel>
+                                                                        </Button>
+                                                                        <Border Margin="26,2,0,4"
+                                                                                Padding="10,6"
+                                                                                CornerRadius="8"
+                                                                                Background="{DynamicResource DshSidebarBgBrush}"
+                                                                                BorderBrush="{DynamicResource DshBorderL1Brush}"
+                                                                                BorderThickness="1"
+                                                                                Visibility="{Binding IsDetailExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                            <TextBlock Text="{Binding StepDetailText}"
+                                                                                       FontFamily="Consolas"
+                                                                                       FontSize="11"
+                                                                                       Foreground="{DynamicResource DshTextSecondaryBrush}"
+                                                                                       TextWrapping="Wrap"
+                                                                                       LineHeight="16"/>
+                                                                        </Border>
+                                                                    </StackPanel>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Border>
+
                                                     <!-- Expanded Timeline Body (Clean left 1.5px border line only, no extra headers) -->
                                                     <Border Margin="6,4,0,2"
                                                             Padding="10,2,0,2"
@@ -763,6 +859,9 @@
                                                                 <Setter Property="Visibility" Value="Visible"/>
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding IsThinkingCollapsed}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsBrowserAgentCollapsibleCard}" Value="True">
                                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
@@ -781,6 +880,266 @@
                                                 Document="{Binding RenderedDocument}"
                                                 FallbackText="{Binding Content}"
                                                 SizeToContent="{Binding IsUser}"/>
+
+                                            <!-- Batch E.2: Inline Chat Canvas Card ([ Kode | Pratinjau ] & [ Ekspor v ] matching image_41a758.png & image_41235b.png) -->
+                                            <Border x:Name="InlineChatCanvasCollapsedChip"
+                                                    Margin="0,8,0,4"
+                                                    Padding="12,7"
+                                                    CornerRadius="10"
+                                                    Background="{DynamicResource DshSidebarBgBrush}"
+                                                    BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                    BorderThickness="1"
+                                                    HorizontalAlignment="Left"
+                                                    Visibility="{Binding IsCanvasCollapsedChipVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Border Width="18" Height="18" CornerRadius="4" Background="{DynamicResource NexusAccentPrimary}" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="≡" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding CanvasTitle}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource DshTextPrimaryBrush}" VerticalAlignment="Center" MaxWidth="360" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                                    <Button Content="Buka Canvas" Command="{Binding ToggleCanvasCloseCommand}" Style="{StaticResource NexusSubtleButtonStyle}" Padding="8,2" FontSize="11.5" Cursor="Hand"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border x:Name="InlineChatCanvasCard"
+                                                    Margin="0,10,0,6"
+                                                    CornerRadius="14"
+                                                    Background="{DynamicResource DshCardBgBrush}"
+                                                    BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                    BorderThickness="1"
+                                                    Visibility="{Binding IsCanvasCardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <StackPanel>
+                                                    <!-- Canvas Top Header Bar: [ Icon + Title ] ... [ Kode | Pratinjau ] [ Ekspor v ] [ Maximize ] [ Close ] -->
+                                                    <Border Height="42"
+                                                            CornerRadius="14,14,0,0"
+                                                            Background="{DynamicResource DshSidebarBgBrush}"
+                                                            BorderBrush="{DynamicResource DshBorderL1Brush}"
+                                                            BorderThickness="0,0,0,1"
+                                                            Padding="14,0,10,0">
+                                                        <DockPanel LastChildFill="True">
+                                                            <!-- Right Header Action Controls -->
+                                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <!-- [ Kode | Pratinjau ] Segmented Toggle Pill -->
+                                                                <Border Height="28"
+                                                                        CornerRadius="14"
+                                                                        Background="{DynamicResource DshBorderL1Brush}"
+                                                                        Padding="2"
+                                                                        Margin="0,0,8,0"
+                                                                        VerticalAlignment="Center">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <Button Command="{Binding SetCanvasCodeModeCommand}"
+                                                                                Style="{StaticResource NexusSubtleButtonStyle}"
+                                                                                Height="24"
+                                                                                Padding="10,0"
+                                                                                FontSize="11.5"
+                                                                                Cursor="Hand"
+                                                                                Content="Kode">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="SegKodeBd" CornerRadius="12" Padding="{TemplateBinding Padding}" Background="Transparent">
+                                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsCanvasCodeMode}" Value="True">
+                                                                                            <Setter TargetName="SegKodeBd" Property="Background" Value="{DynamicResource DshCardBgBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                        <Button Command="{Binding SetCanvasPreviewModeCommand}"
+                                                                                Style="{StaticResource NexusSubtleButtonStyle}"
+                                                                                Height="24"
+                                                                                Padding="10,0"
+                                                                                FontSize="11.5"
+                                                                                Cursor="Hand"
+                                                                                Content="Pratinjau">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="SegPrevBd" CornerRadius="12" Padding="{TemplateBinding Padding}" Background="Transparent">
+                                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsCanvasPreviewMode}" Value="True">
+                                                                                            <Setter TargetName="SegPrevBd" Property="Background" Value="{DynamicResource DshCardBgBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                    </StackPanel>
+                                                                </Border>
+
+                                                                <!-- [ Ekspor v ] Pill Dropdown Button + Popup -->
+                                                                <Grid VerticalAlignment="Center" Margin="0,0,6,0">
+                                                                    <Button x:Name="BtnCanvasExportDropdown"
+                                                                            Command="{Binding ToggleCanvasExportMenuCommand}"
+                                                                            Style="{StaticResource NexusSubtleButtonStyle}"
+                                                                            Height="28"
+                                                                            Padding="11,0"
+                                                                            Cursor="Hand"
+                                                                            ToolTip="Ekspor dokumen atau tabel Canvas (.pdf, .xlsx, .md)">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border CornerRadius="14"
+                                                                                        Background="{DynamicResource DshBorderL1Brush}"
+                                                                                        BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                                                        BorderThickness="1"
+                                                                                        Padding="{TemplateBinding Padding}">
+                                                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                                        <TextBlock services:NexusIcon.Glyph="Save" FontSize="11.5" Foreground="{DynamicResource DshTextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                                        <TextBlock Text="Ekspor" FontSize="11.5" FontWeight="Medium" Foreground="{DynamicResource DshTextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                                        <Path Data="{StaticResource DshIconChevronDown}" Width="8" Height="8" Stretch="Uniform" Stroke="{DynamicResource DshTextSecondaryBrush}" StrokeThickness="1.3" VerticalAlignment="Center"/>
+                                                                                    </StackPanel>
+                                                                                </Border>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                    <Popup IsOpen="{Binding IsCanvasExportMenuOpen, Mode=TwoWay}"
+                                                                           PlacementTarget="{Binding ElementName=BtnCanvasExportDropdown}"
+                                                                           Placement="Bottom"
+                                                                           StaysOpen="False"
+                                                                           AllowsTransparency="True">
+                                                                        <Border Margin="4"
+                                                                                Padding="6"
+                                                                                CornerRadius="10"
+                                                                                Background="{DynamicResource DshCardBgBrush}"
+                                                                                BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                                                BorderThickness="1"
+                                                                                MinWidth="190">
+                                                                            <StackPanel>
+                                                                                <Button Command="{Binding ExportCanvasPdfCommand}" Style="{StaticResource NexusSubtleButtonStyle}" Height="30" Padding="10,0" HorizontalContentAlignment="Left" FontSize="12" Content="Ekspor ke PDF (.pdf)" Cursor="Hand"/>
+                                                                                <Button Command="{Binding ExportCanvasXlsxCommand}" Style="{StaticResource NexusSubtleButtonStyle}" Height="30" Padding="10,0" HorizontalContentAlignment="Left" FontSize="12" Content="Ekspor ke Excel (.xlsx)" Cursor="Hand"/>
+                                                                                <Button Command="{Binding ExportCanvasRawCommand}" Style="{StaticResource NexusSubtleButtonStyle}" Height="30" Padding="10,0" HorizontalContentAlignment="Left" FontSize="12" Content="Simpan Berkas Asli (.md / .cmd)" Cursor="Hand"/>
+                                                                                <Border Height="1" Background="{DynamicResource DshBorderL1Brush}" Margin="4,3"/>
+                                                                                <Button Command="{Binding CopyCanvasContentCommand}" Style="{StaticResource NexusSubtleButtonStyle}" Height="30" Padding="10,0" HorizontalContentAlignment="Left" FontSize="12" Content="Salin Isi ke Clipboard" Cursor="Hand"/>
+                                                                            </StackPanel>
+                                                                        </Border>
+                                                                    </Popup>
+                                                                </Grid>
+
+                                                                <!-- [ Maximize ] & [ Close ] Icon Buttons -->
+                                                                <Button Command="{Binding ToggleCanvasMaximizeCommand}"
+                                                                        Style="{StaticResource NexusIconButtonStyle}"
+                                                                        Width="26"
+                                                                        Height="26"
+                                                                        Margin="0,0,2,0"
+                                                                        ToolTip="Perlebar / kembalikan tinggi pratinjau Canvas">
+                                                                    <TextBlock services:NexusIcon.Glyph="FullScreen" FontSize="11.5" Foreground="{DynamicResource DshTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Button>
+                                                                <Button Command="{Binding ToggleCanvasCloseCommand}"
+                                                                        Style="{StaticResource NexusIconButtonStyle}"
+                                                                        Width="26"
+                                                                        Height="26"
+                                                                        ToolTip="Ciutkan kartu Canvas">
+                                                                    <Path Data="{StaticResource DshIconClose}" Width="9" Height="9" Stretch="Uniform" Stroke="{DynamicResource DshTextSecondaryBrush}" StrokeThickness="1.35" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Button>
+                                                            </StackPanel>
+
+                                                            <!-- Left Header Title with Blue Document Icon + Argon Live Building Indicator -->
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <Border Width="18" Height="18" CornerRadius="4" Background="{DynamicResource NexusAccentPrimary}" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                                    <TextBlock Text="≡" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <TextBlock Text="{Binding CanvasTitle}"
+                                                                           FontSize="12.5"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource DshTextPrimaryBrush}"
+                                                                           VerticalAlignment="Center"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           MaxWidth="260"/>
+                                                                <TextBlock Text="{Binding CanvasStatusBadgeText}"
+                                                                           FontSize="11.5"
+                                                                           FontWeight="Medium"
+                                                                           Foreground="{DynamicResource NexusAccentPrimary}"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="10,0,0,0"
+                                                                           Visibility="{Binding HasCanvasStatusBadge, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </Border>
+
+                                                    <!-- Export Status Toast Row (Visible when exported) -->
+                                                    <Border Padding="14,6"
+                                                            Background="{DynamicResource DshSidebarBgBrush}"
+                                                            BorderBrush="{DynamicResource DshBorderL1Brush}"
+                                                            BorderThickness="0,0,0,1"
+                                                            Visibility="{Binding HasCanvasExportStatus, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding CanvasExportStatusText}"
+                                                                   FontSize="11.5"
+                                                                   FontWeight="Medium"
+                                                                   Foreground="{DynamicResource NexusAccentPrimary}"/>
+                                                    </Border>
+
+                                                    <!-- Canvas Body Area (Scrollable, supports Pratinjau & Kode modes) -->
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                                  HorizontalScrollBarVisibility="Disabled"
+                                                                  MaxHeight="{Binding CanvasBodyMaxHeight}"
+                                                                  Padding="24,20">
+                                                        <Grid>
+                                                            <!-- MODE 1: PRATINJAU (Editorial Document / Report View matching image_41a758.png) -->
+                                                            <StackPanel Visibility="{Binding IsCanvasPreviewMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock Text="{Binding CanvasPreviewHeadline}"
+                                                                           FontSize="20"
+                                                                           FontWeight="Bold"
+                                                                           Foreground="{DynamicResource DshTextPrimaryBrush}"
+                                                                           TextWrapping="Wrap"
+                                                                           LineHeight="27"/>
+                                                                <TextBlock Text="{Binding CanvasPreviewSubtitle}"
+                                                                           FontSize="13"
+                                                                           Foreground="{DynamicResource DshTextSecondaryBrush}"
+                                                                           TextWrapping="Wrap"
+                                                                           LineHeight="19"
+                                                                           Margin="0,8,0,14"/>
+                                                                <Border Height="1" Background="{DynamicResource DshBorderL2Brush}" Margin="0,0,0,16"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0"
+                                                                               Text="{Binding CanvasPreviewBodyText}"
+                                                                               FontSize="13"
+                                                                               Foreground="{DynamicResource DshTextPrimaryBrush}"
+                                                                               TextWrapping="Wrap"
+                                                                               LineHeight="20"/>
+                                                                    <Border Grid.Column="1"
+                                                                            Margin="20,0,0,0"
+                                                                            Padding="16,2,0,2"
+                                                                            BorderBrush="{DynamicResource DshBorderL2Brush}"
+                                                                            BorderThickness="1,0,0,0"
+                                                                            VerticalAlignment="Top"
+                                                                            Visibility="{Binding HasCanvasHighlightMetric, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                        <StackPanel MaxWidth="175">
+                                                                            <TextBlock Text="{Binding CanvasHighlightMetricValue}"
+                                                                                       FontSize="26"
+                                                                                       FontWeight="Bold"
+                                                                                       Foreground="{DynamicResource NexusAccentPrimary}"
+                                                                                       Margin="0,0,0,4"/>
+                                                                            <TextBlock Text="{Binding CanvasHighlightMetricCaption}"
+                                                                                       FontSize="11.5"
+                                                                                       Foreground="{DynamicResource DshTextSecondaryBrush}"
+                                                                                       TextWrapping="Wrap"
+                                                                                       LineHeight="16"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </Grid>
+                                                            </StackPanel>
+
+                                                            <!-- MODE 2: KODE (Monospace Script / Source View matching image_41235b.png) -->
+                                                            <TextBox Visibility="{Binding IsCanvasCodeMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                     Text="{Binding CanvasRawCodeText, Mode=OneWay}"
+                                                                     IsReadOnly="True"
+                                                                     BorderThickness="0"
+                                                                     Background="Transparent"
+                                                                     Foreground="{DynamicResource DshTextPrimaryBrush}"
+                                                                     FontFamily="Consolas"
+                                                                     FontSize="12"
+                                                                     TextWrapping="Wrap"
+                                                                     Padding="0"/>
+                                                        </Grid>
+                                                    </ScrollViewer>
+                                                </StackPanel>
+                                            </Border>
                                             <TextBlock Text="{Binding ErrorText}"
                                                        Foreground="{DynamicResource NexusErrorStroke}"
                                                        TextWrapping="Wrap"

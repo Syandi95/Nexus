@@ -493,6 +493,9 @@
            <Button Width="26" Height="26" Padding="0" Margin="0,0,4,0" Click="BrowserForward_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Maju">
             <TextBlock services:NexusIcon.Glyph="ChevronRight" FontSize="11" Foreground="{DynamicResource DshTextSecondaryBrush}"/>
            </Button>
+           <Button x:Name="BrowserHomeButton" Width="26" Height="26" Padding="0" Margin="0,0,2,0" Click="BrowserHome_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Beranda (https://www.google.com)">
+            <TextBlock services:NexusIcon.Glyph="Home" FontSize="12" Foreground="{DynamicResource DshTextSecondaryBrush}"/>
+           </Button>
            <Button Width="26" Height="26" Padding="0" Click="BrowserReload_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Muat ulang halaman">
             <TextBlock services:NexusIcon.Glyph="Refresh" FontSize="12" Foreground="{DynamicResource DshTextSecondaryBrush}"/>
            </Button>
@@ -517,9 +520,25 @@
             <TextBlock x:Name="BrowserAddressWatermark" Text="Enter an HTTP(S) address" FontSize="12" Margin="4,0,0,0" Foreground="{DynamicResource DshTextTertiaryBrush}" IsHitTestVisible="False" VerticalAlignment="Center"/>
            </Grid>
           </Border>
-          <Button Grid.Column="2" Width="26" Height="26" Padding="0" Margin="8,0,0,0" Click="BrowserOpenExternal_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Buka di browser eksternal">
-           <TextBlock Text="&#x2197;" FontSize="13" Foreground="{DynamicResource DshTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Button>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+           <Button x:Name="BrowserAgentControlToggleButton" Width="26" Height="26" Padding="0" Margin="0,0,4,0" Click="BrowserAgentControlToggle_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Tampilkan / Sembunyikan Kontrol Agen (Take the Wheel, Pause, Stop)">
+            <TextBlock Text="&#x2699;" FontSize="12.5" Foreground="{DynamicResource DshTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+           </Button>
+           <StackPanel x:Name="BrowserAgentControlCollapsiblePanel" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+            <Button x:Name="BrowserTakeTheWheelButton" Height="26" Padding="8,0" Margin="0,0,4,0" Click="BrowserTakeTheWheel_Click" Style="{StaticResource NexusSubtleButtonStyle}" ToolTip="Take the Wheel / Return Control">
+             <TextBlock x:Name="BrowserTakeTheWheelText" Text="Take the Wheel" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource DshTextPrimaryBrush}" VerticalAlignment="Center"/>
+            </Button>
+            <Button x:Name="BrowserPauseResumeButton" Height="26" Padding="8,0" Margin="0,0,4,0" Click="BrowserPauseResume_Click" Style="{StaticResource NexusSubtleButtonStyle}" ToolTip="Pause / Resume Agent">
+             <TextBlock x:Name="BrowserPauseResumeText" Text="Pause" FontSize="11.5" Foreground="{DynamicResource DshTextSecondaryBrush}" VerticalAlignment="Center"/>
+            </Button>
+            <Button x:Name="BrowserStopAgentButton" Height="26" Padding="8,0" Margin="0,0,4,0" Click="BrowserStopAgent_Click" Style="{StaticResource NexusSubtleButtonStyle}" ToolTip="Stop Agent &amp; Navigation">
+             <TextBlock x:Name="BrowserStopAgentText" Text="Stop" FontSize="11.5" Foreground="{DynamicResource DshTextSecondaryBrush}" VerticalAlignment="Center"/>
+            </Button>
+           </StackPanel>
+           <Button Width="26" Height="26" Padding="0" Click="BrowserOpenExternal_Click" Style="{StaticResource NexusIconButtonStyle}" ToolTip="Buka di browser eksternal">
+            <TextBlock Text="&#x2197;" FontSize="13" Foreground="{DynamicResource DshTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+           </Button>
+          </StackPanel>
          </Grid>
         </Border>
         <!-- Native Chromium WebView2 / WebBrowser Viewport & Empty State -->

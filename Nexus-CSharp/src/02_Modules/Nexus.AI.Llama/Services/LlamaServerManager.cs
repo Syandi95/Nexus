@@ -71,6 +71,8 @@ namespace Nexus.AI.Llama.Services
         public ServerState State => _state;
         public int? OwnedPid => _ownedPid;
         public string? RuntimeModelPath => _runtimeModelPath;
+        public int ActivePort => _port;
+        public static int ActiveConfiguredPort { get; private set; } = 8080;
 
         public event Action<ServerEvent>? OnEvent;
 
@@ -88,6 +90,7 @@ namespace Nexus.AI.Llama.Services
         {
             _engineDir = engineDir;
             _port = port;
+            ActiveConfiguredPort = port;
             Emit("INIT", $"EngineDir={engineDir}, Port={port}");
         }
 

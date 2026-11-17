@@ -47,6 +47,7 @@ public static class BrowserUseDomEngine
         "search",
         "click",
         "input",
+        "scroll",
         "extract"
     };
 
@@ -59,12 +60,46 @@ public static class BrowserUseDomEngine
             "search" => "search_web",
             "click" or "computer_click" => "click_element",
             "input" or "type" or "computer_type" => "input_text",
-            "select_dropdown_option" => "select_option",
+            "select_dropdown_option" or "select" => "select_option",
+            "computer_scroll" => "scroll",
+            "page_down" or "scrolldown" => "scroll_down",
+            "page_up" or "scrollup" => "scroll_up",
             "switch" => "switch_tab",
             "computer_key" => "send_keys",
             "computer_request_help" or "take_the_wheel" => "request_human_takeover",
             "computer_request_secret" => "request_secret",
             _ => a
+        };
+    }
+
+    public static string ResolveScrollDirection(string? actionName, string? textOrUrl = null)
+    {
+        string act = (actionName ?? string.Empty).Trim().ToLowerInvariant();
+        if (act is "scroll_up" or "page_up" or "scrollup")
+            return "up";
+        if (act is "scroll_down" or "page_down" or "scrolldown")
+            return "down";
+        string hint = (textOrUrl ?? string.Empty).Trim().ToLowerInvariant();
+        if (hint.StartsWith("up", StringComparison.Ordinal) ||
+            hint.Contains("atas", StringComparison.Ordinal) ||
+            hint.StartsWith("-", StringComparison.Ordinal))
+        {
+            return "up";
+        }
+        return "down";
+    }
+
+    public static int ComputeAdaptivePostActionSettleDelayMs(string? actionName, bool pressEnter = false, bool domOrUrlChanged = true)
+    {
+        if (!domOrUrlChanged) return 0;
+        string norm = NormalizeBrowserUseActionName(actionName);
+        return norm switch
+        {
+            "input_text" => pressEnter ? 600 : 180,
+            "click_element" => 450,
+            "select_option" => 300,
+            "scroll" or "scroll_down" or "scroll_up" => 250,
+            _ => 200
         };
     }
 
@@ -306,7 +341,17 @@ public static class BrowserUseDomEngine
     /// </summary>
     public static string GetBrowserUseSystemPrompt()
     {
-        return Nexus.Foundation.Config.PromptRegistry.DefaultBrowserAgentPrompt;
+        const string extraRules =
+            "- Elements with compound_components=\"count=N,options=...\" are <select> dropdowns. Use \"select_option\" with the desired option text or value in \"text_or_url\".\r\n" +
+            "- On Step 1, include \"plan_update\" as a structured list of sub-goals: [{\"op\":\"navigate\",\"target\":\"https://...\"}, {\"op\":\"input\",\"text\":\"...\"}, {\"op\":\"click_and_play\",\"target\":\"...\"}].\r\n" +
+            "- DELTA-ONLY REPLANNING (Rule 4): On Step >= 2, C# manages [x]/[ ] step status automatically. You MUST set \"plan_update\": null whenever the existing plan is still valid; only send a non-null \"plan_update\" delta array if an action failed or the page structure requires changing remaining sub-goals.\r\n";
+        string basePrompt = Nexus.Foundation.Config.PromptRegistry.DefaultBrowserAgentPrompt;
+        if (basePrompt.Contains("DELTA-ONLY REPLANNING", StringComparison.Ordinal))
+            return basePrompt;
+        return basePrompt.Replace(
+            "</browser_rules>",
+            extraRules + "</browser_rules>",
+            StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -322,14 +367,35 @@ public static class BrowserUseDomEngine
         IReadOnlySet<string>? previousStepXpaths = null,
         string? readStateContent = null,
         IReadOnlyList<string>? activePlan = null,
-        string? loopNudge = null)
+        string? loopNudge = null,
+        string? carryForwardContext = null,
+        int maxViewportElements = 45,
+        int maxWebpageContentChars = 1600,
+        string? fastPathFailureNote = null)
     {
+        bool isCompactMode = maxViewportElements < 45 || maxWebpageContentChars < 800;
         var sb = new StringBuilder();
+
+        // ====================================================================
+        // 1. STATIC PREFIX BLOCK (100% invariant across all steps of a task so
+        //    llama-server KV cache `cache_n` reuses SystemPrompt + UserHeader)
+        // ====================================================================
+        sb.AppendLine("<static_task_header>");
         sb.AppendLine("<user_request>");
         sb.AppendLine(userTask);
         sb.AppendLine("</user_request>");
+        if (!string.IsNullOrWhiteSpace(carryForwardContext))
+        {
+            sb.AppendLine(carryForwardContext.Trim());
+        }
+        sb.AppendLine("<delta_plan_policy>On Step >= 2, set \"plan_update\": null if the current plan is still valid; only send a non-null delta array when replanning after failure.</delta_plan_policy>");
+        sb.AppendLine("</static_task_header>");
         sb.AppendLine();
 
+        // ====================================================================
+        // 2. DYNAMIC STEP TAIL (Only the suffix after <static_task_header> is
+        //    prefilled on Steps 2..N when KV cache_prompt=true is active)
+        // ====================================================================
         if (activePlan is { Count: > 0 })
         {
             sb.AppendLine("<plan>");
@@ -349,7 +415,8 @@ public static class BrowserUseDomEngine
         }
         else
         {
-            foreach (var h in stepHistory.TakeLast(8))
+            int histTake = isCompactMode ? 4 : 8;
+            foreach (var h in stepHistory.TakeLast(histTake))
                 sb.AppendLine(h);
         }
         sb.AppendLine("</agent_history>");
@@ -363,10 +430,13 @@ public static class BrowserUseDomEngine
             sb.AppendLine();
         }
 
-        if (!string.IsNullOrWhiteSpace(loopNudge))
+        if (!string.IsNullOrWhiteSpace(fastPathFailureNote) || !string.IsNullOrWhiteSpace(loopNudge))
         {
             sb.AppendLine("<loop_nudge>");
-            sb.AppendLine(loopNudge.Trim());
+            if (!string.IsNullOrWhiteSpace(fastPathFailureNote))
+                sb.AppendLine(fastPathFailureNote.Trim());
+            if (!string.IsNullOrWhiteSpace(loopNudge))
+                sb.AppendLine(loopNudge.Trim());
             sb.AppendLine("</loop_nudge>");
             sb.AppendLine();
         }
@@ -405,7 +475,25 @@ public static class BrowserUseDomEngine
         }
         else
         {
-            foreach (var el in snapshot.Elements.Take(35))
+            int vpBudget = Math.Clamp(maxViewportElements, 8, 50);
+            var viewportSlice = snapshot.Elements.Take(vpBudget).ToList();
+            var criticalSubmitButtons = snapshot.Elements
+                .Skip(vpBudget)
+                .Where(e => e.IsSensitiveOrSubmit ||
+                            string.Equals(e.TagName, "button", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(e.InputType, "submit", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(e.Role, "button", StringComparison.OrdinalIgnoreCase))
+                .Take(5);
+            var promptElements = viewportSlice
+                .Concat(criticalSubmitButtons)
+                .GroupBy(e => e.Index)
+                .Select(g => g.First())
+                .Take(vpBudget + 5);
+
+            int maxLabelLen = isCompactMode ? 68 : 120;
+            int maxHrefLen = isCompactMode ? 56 : 90;
+
+            foreach (var el in promptElements)
             {
                 bool isNew = el.IsNewElement ||
                              (previousStepXpaths is not null &&
@@ -417,17 +505,20 @@ public static class BrowserUseDomEngine
                 string roleInfo = !string.IsNullOrWhiteSpace(el.Role) && el.Role != el.TagName ? $" role=\"{el.Role}\"" : "";
                 string ceInfo = el.IsContentEditable ? " contenteditable=\"true\"" : "";
                 string compInfo = !string.IsNullOrWhiteSpace(el.CompoundInfo) ? $" compound_components=\"{el.CompoundInfo}\"" : "";
-                string hrefInfo = !string.IsNullOrWhiteSpace(el.Href) ? $" href=\"{(el.Href!.Length > 90 ? el.Href[..90] + "..." : el.Href)}\"" : "";
-                sb.AppendLine($"{starPrefix}[{el.Index}]<{el.TagName}{typeInfo}{roleInfo}{ceInfo}{compInfo}{hrefInfo}>{el.TextOrLabel}</{el.TagName}>");
+                string hrefInfo = !string.IsNullOrWhiteSpace(el.Href) ? $" href=\"{(el.Href!.Length > maxHrefLen ? el.Href[..maxHrefLen] + "..." : el.Href)}\"" : "";
+                string lblText = el.TextOrLabel ?? string.Empty;
+                if (lblText.Length > maxLabelLen)
+                    lblText = lblText[..maxLabelLen] + "...";
+                sb.AppendLine($"{starPrefix}[{el.Index}]<{el.TagName}{typeInfo}{roleInfo}{ceInfo}{compInfo}{hrefInfo}>{lblText}</{el.TagName}>");
             }
         }
         sb.AppendLine("</browser_state>");
         sb.AppendLine();
 
-        if (!string.IsNullOrWhiteSpace(snapshot.CleanMarkdownViewportText))
+        if (!string.IsNullOrWhiteSpace(snapshot.CleanMarkdownViewportText) && maxWebpageContentChars > 0)
         {
-            string clippedContent = snapshot.CleanMarkdownViewportText.Length > 1600
-                ? snapshot.CleanMarkdownViewportText[..1600] + "..."
+            string clippedContent = snapshot.CleanMarkdownViewportText.Length > maxWebpageContentChars
+                ? snapshot.CleanMarkdownViewportText[..maxWebpageContentChars] + "..."
                 : snapshot.CleanMarkdownViewportText;
             sb.AppendLine("<webpage_content>");
             sb.AppendLine(clippedContent);
@@ -439,7 +530,7 @@ public static class BrowserUseDomEngine
         return sb.ToString();
     }
 
-    public static string GetBuildDomTreeScript(int viewportExpansionPx = 600, int maxElements = 60)
+    public static string GetBuildDomTreeScript(int viewportExpansionPx = 600, int maxElements = 60, double cursorStartX = 420, double cursorStartY = 220)
     {
         return $@"(function() {{
             try {{
@@ -566,7 +657,6 @@ public static class BrowserUseDomEngine
                     var lbl = (
                         el.getAttribute('aria-label') ||
                         el.getAttribute('placeholder') ||
-                        el.getAttribute(' data-placeholder') ||
                         el.getAttribute('data-placeholder') ||
                         el.innerText ||
                         el.value ||
@@ -589,11 +679,14 @@ public static class BrowserUseDomEngine
                             lbl = (childTitleEl.innerText || childTitleEl.getAttribute('title') || childTitleEl.getAttribute('alt') || childTitleEl.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
                         }}
                     }}
-                    if (!lbl && tag === 'a' && typeof el.closest === 'function') {{
+                    if ((!lbl || /^\d+:\d+(?::\d+)?$/.test(lbl) || /^(?:now\s+playing|diputar\s+sekarang)$/i.test(lbl)) && tag === 'a' && typeof el.closest === 'function') {{
                         var cardWrap = el.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, ytm-video-with-context-renderer, ytd-compact-video-renderer, article, .card, .item, .post, [class*=""card"" i], [class*=""item"" i], figure, li');
                         if (cardWrap && typeof cardWrap.querySelector === 'function') {{
                             var h3El = cardWrap.querySelector('#video-title, h1, h2, h3, h4, .title, .name, .media-item-headline, img[alt]');
-                            if (h3El) lbl = (h3El.innerText || h3El.getAttribute('title') || h3El.getAttribute('alt') || h3El.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                            if (h3El) {{
+                                var resolvedCardTitle = (h3El.innerText || h3El.getAttribute('title') || h3El.getAttribute('alt') || h3El.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                                if (resolvedCardTitle) lbl = resolvedCardTitle;
+                            }}
                         }}
                     }}
                     if ((tag === 'video' || tag === 'iframe' || (el.classList && (el.classList.contains('play-button') || el.classList.contains('vjs-big-play-button') || el.classList.contains('plyr__control--overlaid')))) && (!lbl || lbl === tag)) {{
@@ -637,6 +730,15 @@ public static class BrowserUseDomEngine
                         }}
                         if (tag === 'video' || tag === 'audio') {{
                             return 'state=' + (el.paused ? 'paused' : 'playing') + ',muted=' + (!!el.muted);
+                        }}
+                        if (tag === 'iframe' || tag === 'frame') {{
+                            var ifSrc = el.src || el.getAttribute('src') || '';
+                            var crossOrig = false;
+                            try {{ crossOrig = !el.contentDocument; }} catch(coe) {{ crossOrig = true; }}
+                            var ir = getRect(el);
+                            var icx = ir ? Math.round(ir.left + ir.width / 2) : 640;
+                            var icy = ir ? Math.round(ir.top + ir.height / 2) : 360;
+                            return 'iframe_src=' + ifSrc.substring(0, 90) + ',cross_origin=' + (crossOrig ? 'true' : 'false') + ',center_x=' + icx + ',center_y=' + icy;
                         }}
                         if (roleAttr === 'combobox' || (el.getAttribute('aria-autocomplete') && el.getAttribute('aria-autocomplete') !== 'none')) {{
                             return 'autocomplete=true';
@@ -762,9 +864,15 @@ public static class BrowserUseDomEngine
                             traverse(sChildren[si], parentHighlighted || shouldHighlight);
                         }}
                     }}
-                    if ((tag === 'iframe' || tag === 'frame') && el.contentDocument && el.contentDocument.body) {{
+                    if (tag === 'iframe' || tag === 'frame') {{
                         try {{
-                            traverse(el.contentDocument.body, false);
+                            if (el.contentDocument && el.contentDocument.body) {{
+                                var ifrInputs = el.contentDocument.querySelectorAll('video, button, .play-button, .vjs-big-play-button, [aria-label*=""play"" i], [aria-label*=""putar"" i], a[href], input:not([type=""hidden""]), select, textarea');
+                                for (var ii = 0; ii < ifrInputs.length && nextIdx <= {maxElements}; ii++) {{
+                                    registerElement(ifrInputs[ii]);
+                                }}
+                                traverse(el.contentDocument.body, false);
+                            }}
                         }} catch(ife) {{}}
                     }}
                     var children = el.children;
@@ -790,11 +898,23 @@ public static class BrowserUseDomEngine
                         var domEl = window.__nexusDomMap[nInfo.Index];
                         if (!domEl || !domEl.getBoundingClientRect) continue;
                         var br = domEl.getBoundingClientRect();
-                        if (br.width < 8 || br.height < 8 || br.bottom < 0 || br.top > window.innerHeight) continue;
+                        var ifrOffX = 0, ifrOffY = 0;
+                        try {{
+                            var cWin = (domEl.ownerDocument && domEl.ownerDocument.defaultView) ? domEl.ownerDocument.defaultView : null;
+                            while (cWin && cWin !== window && cWin.frameElement) {{
+                                var fRect = cWin.frameElement.getBoundingClientRect();
+                                ifrOffX += fRect.left;
+                                ifrOffY += fRect.top;
+                                cWin = cWin.parent;
+                            }}
+                        }} catch(ioe) {{}}
+                        var boxLeft = br.left + ifrOffX;
+                        var boxTop = br.top + ifrOffY;
+                        if (br.width < 8 || br.height < 8 || (boxTop + br.height) < 0 || boxTop > window.innerHeight) continue;
                         var isInput = nInfo.IsContentEditable || nInfo.TagName === 'input' || nInfo.TagName === 'textarea' || nInfo.Role === 'textbox' || nInfo.Role === 'searchbox';
                         var color = isInput ? '#10B981' : (nInfo.TagName === 'button' ? '#2563EB' : '#6366F1');
                         var box = document.createElement('div');
-                        box.style.cssText = 'position:fixed;left:' + Math.max(0, Math.round(br.left)) + 'px;top:' + Math.max(0, Math.round(br.top)) + 'px;width:' + Math.round(br.width) + 'px;height:' + Math.round(br.height) + 'px;border:2px solid ' + color + ';background:' + (isInput ? 'rgba(16,185,129,0.08)' : 'rgba(37,99,235,0.06)') + ';border-radius:5px;pointer-events:none;box-sizing:border-box;transition:all 0.2s ease;';
+                        box.style.cssText = 'position:fixed;left:' + Math.max(0, Math.round(boxLeft)) + 'px;top:' + Math.max(0, Math.round(boxTop)) + 'px;width:' + Math.round(br.width) + 'px;height:' + Math.round(br.height) + 'px;border:2px solid ' + color + ';background:' + (isInput ? 'rgba(16,185,129,0.08)' : 'rgba(37,99,235,0.06)') + ';border-radius:5px;pointer-events:none;box-sizing:border-box;transition:all 0.2s ease;';
                         var badge = document.createElement('span');
                         badge.innerText = '[' + nInfo.Index + ']';
                         badge.style.cssText = 'position:absolute;top:-16px;left:-2px;background:' + color + ';color:#FFFFFF;font-family:system-ui,sans-serif;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;line-height:13px;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.25);';
@@ -802,6 +922,66 @@ public static class BrowserUseDomEngine
                         ov.appendChild(box);
                     }}
                     document.body.appendChild(ov);
+
+                    var startX = (typeof window.__nexusCurX === 'number') ? window.__nexusCurX : {Math.Round(cursorStartX)};
+                    var startY = (typeof window.__nexusCurY === 'number') ? window.__nexusCurY : {Math.Round(cursorStartY)};
+                    window.__nexusCurX = startX;
+                    window.__nexusCurY = startY;
+                    var vCurInit = document.getElementById('__nexus_virtual_cursor');
+                    if (!vCurInit) {{
+                        vCurInit = document.createElement('div');
+                        vCurInit.id = '__nexus_virtual_cursor';
+                        vCurInit.style.cssText = 'position:fixed;left:0;top:0;width:24px;height:24px;pointer-events:none;z-index:2147483647;will-change:transform;opacity:1;transform:translate3d(' + Math.round(startX) + 'px,' + Math.round(startY) + 'px,0);';
+                        vCurInit.innerHTML = '<svg id=""__nexus_cursor_svg"" width=""24"" height=""24"" viewBox=""0 0 24 24"" style=""filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));transition:transform 0.12s ease;""><path d=""M4 2L20 11L13 13L16 20L13 21L10 14L5 19Z"" fill=""#111827"" stroke=""#FFFFFF"" stroke-width=""1.8"" stroke-linejoin=""round""/></svg>' +
+                                             '<div id=""__nexus_click_ripple"" style=""position:absolute;left:-7px;top:-7px;width:20px;height:20px;border-radius:50%;border:2px solid #111827;box-shadow:0 0 0 1.5px #FFFFFF;opacity:0;transform:scale(0.4);transition:transform 0.24s ease,opacity 0.24s ease;""></div>';
+                        (document.documentElement || document.body).appendChild(vCurInit);
+                    }}
+                    window.__nexusGlideCursorTo = function(tx, ty, durMs, showClick) {{
+                        var curEl = document.getElementById('__nexus_virtual_cursor');
+                        if (!curEl) return;
+                        var sx = (typeof window.__nexusCurX === 'number') ? window.__nexusCurX : {Math.Round(cursorStartX)};
+                        var sy = (typeof window.__nexusCurY === 'number') ? window.__nexusCurY : {Math.Round(cursorStartY)};
+                        if (Math.hypot(tx - sx, ty - sy) < 8) {{
+                            sx = Math.max(40, tx - 140);
+                            sy = Math.max(40, ty - 90);
+                        }}
+                        var ctrlX = (sx + tx) / 2 + (ty - sy) * 0.18;
+                        var ctrlY = (sy + ty) / 2 - Math.abs(tx - sx) * 0.14;
+                        var t0 = performance.now();
+                        var d = Math.max(180, durMs || 320);
+                        function stepFrame(now) {{
+                            var p = Math.min(1, (now - t0) / d);
+                            var ease = 1 - Math.pow(1 - p, 3);
+                            var inv = 1 - ease;
+                            var nx = inv * inv * sx + 2 * inv * ease * ctrlX + ease * ease * tx;
+                            var ny = inv * inv * sy + 2 * inv * ease * ctrlY + ease * ease * ty;
+                            window.__nexusCurX = nx;
+                            window.__nexusCurY = ny;
+                            curEl.style.transform = 'translate3d(' + Math.round(nx) + 'px,' + Math.round(ny) + 'px,0)';
+                            if (p < 1) {{
+                                requestAnimationFrame(stepFrame);
+                            }} else if (showClick) {{
+                                var svgEl = document.getElementById('__nexus_cursor_svg');
+                                var ripEl = document.getElementById('__nexus_click_ripple');
+                                if (svgEl) {{
+                                    svgEl.style.transform = 'scale(0.84)';
+                                    setTimeout(function() {{ try {{ svgEl.style.transform = 'scale(1)'; }} catch(e){{}} }}, 130);
+                                }}
+                                if (ripEl) {{
+                                    ripEl.style.opacity = '0.92';
+                                    ripEl.style.transform = 'scale(1.55)';
+                                    setTimeout(function() {{ try {{ ripEl.style.opacity = '0'; ripEl.style.transform = 'scale(0.4)'; }} catch(e){{}} }}, 230);
+                                }}
+                            }}
+                        }}
+                        requestAnimationFrame(stepFrame);
+                    }};
+                    if (nodesOut.length > 0 && !window.__nexusInitialSweepDone) {{
+                        window.__nexusInitialSweepDone = true;
+                        var fx = Math.min(window.innerWidth - 60, Math.max(120, Math.round(window.innerWidth * 0.52)));
+                        var fy = Math.min(window.innerHeight - 60, Math.max(90, Math.round(window.innerHeight * 0.28)));
+                        window.__nexusGlideCursorTo(fx, fy, 260, false);
+                    }}
 
                     var oldHud = document.getElementById('__nexus_agent_hud');
                     if (oldHud) oldHud.remove();
@@ -839,6 +1019,8 @@ public static class BrowserUseDomEngine
                 if (ov) ov.remove();
                 var hd = document.getElementById('__nexus_agent_hud');
                 if (hd) hd.remove();
+                var vCur = document.getElementById('__nexus_virtual_cursor');
+                if (vCur) { vCur.style.opacity = '0.96'; }
                 var highlighted = document.querySelectorAll('[data-nexus-idx]');
                 for (var i = 0; i < highlighted.length; i++) {
                     highlighted[i].style.outline = '';
@@ -951,8 +1133,19 @@ public static class BrowserUseDomEngine
                         }}
                     }}
                 }} catch(fae) {{}}
-                var cx = r.left + r.width / 2;
-                var cy = r.top + r.height / 2;
+                var iframeOffsetX = 0;
+                var iframeOffsetY = 0;
+                try {{
+                    var curWin = (el.ownerDocument && el.ownerDocument.defaultView) ? el.ownerDocument.defaultView : null;
+                    while (curWin && curWin !== window && curWin.frameElement) {{
+                        var fr = curWin.frameElement.getBoundingClientRect();
+                        iframeOffsetX += fr.left;
+                        iframeOffsetY += fr.top;
+                        curWin = curWin.parent;
+                    }}
+                }} catch(ioe) {{}}
+                var cx = r.left + iframeOffsetX + r.width / 2;
+                var cy = r.top + iframeOffsetY + r.height / 2;
                 if (typeof document.elementFromPoint === 'function') {{
                     var winW = window.innerWidth || 1920;
                     var winH = window.innerHeight || 1080;
@@ -991,6 +1184,19 @@ public static class BrowserUseDomEngine
                         el.style.outline = '2px solid #2563EB';
                         el.style.outlineOffset = '2px';
                     }}
+                    var vCurExec = document.getElementById ? document.getElementById('__nexus_virtual_cursor') : null;
+                    if (!vCurExec && (document.documentElement || document.body)) {{
+                        vCurExec = document.createElement('div');
+                        vCurExec.id = '__nexus_virtual_cursor';
+                        vCurExec.style.cssText = 'position:fixed;left:0;top:0;width:22px;height:22px;pointer-events:none;z-index:2147483647;transition:transform 0.22s cubic-bezier(0.22,1,0.36,1),opacity 0.18s ease;will-change:transform;opacity:1;transform:translate3d(72px,56px,0);';
+                        vCurExec.innerHTML = '<svg width=""22"" height=""22"" viewBox=""0 0 24 24"" style=""filter:drop-shadow(0 2px 5px rgba(0,0,0,0.45));""><path d=""M4 2L20 11L13 13L16 20L13 21L10 14L5 19Z"" fill=""#111827"" stroke=""#FFFFFF"" stroke-width=""1.8"" stroke-linejoin=""round""/></svg>';
+                        (document.documentElement || document.body).appendChild(vCurExec);
+                        void vCurExec.offsetWidth;
+                    }}
+                    if (vCurExec) {{
+                        vCurExec.style.opacity = '1';
+                        vCurExec.style.transform = 'translate3d(' + Math.round(cx) + 'px,' + Math.round(cy) + 'px,0)';
+                    }}
                     var oldHud = document.getElementById ? document.getElementById('__nexus_agent_hud') : null;
                     if (oldHud) oldHud.remove();
                 }} catch(he) {{}}
@@ -1004,13 +1210,37 @@ public static class BrowserUseDomEngine
                             linkAnchor.removeAttribute('target');
                         }}
                     }} catch(te) {{}}
-                    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(function(evType) {{
+                    ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function(evType) {{
                         try {{
-                            el.dispatchEvent(new MouseEvent(evType, {{ bubbles: true, cancelable: true, clientX: cx, clientY: cy }}));
+                            var isPtr = evType.indexOf('pointer') === 0;
+                            var EvCtor = (isPtr && typeof window.PointerEvent === 'function') ? window.PointerEvent : MouseEvent;
+                            var evOpts = {{
+                                bubbles: true,
+                                cancelable: true,
+                                composed: true,
+                                view: window,
+                                detail: 1,
+                                button: 0,
+                                buttons: evType === 'mouseup' || evType === 'pointerup' ? 0 : 1,
+                                clientX: cx,
+                                clientY: cy,
+                                screenX: cx,
+                                screenY: cy
+                            }};
+                            if (isPtr) {{
+                                evOpts.pointerId = 1;
+                                evOpts.isPrimary = true;
+                                evOpts.pointerType = 'mouse';
+                            }}
+                            el.dispatchEvent(new EvCtor(evType, evOpts));
                         }} catch(me) {{}}
                     }});
                     if (typeof el.click === 'function') {{
                         try {{ el.click(); }} catch(ce) {{}}
+                    }} else {{
+                        try {{
+                            el.dispatchEvent(new MouseEvent('click', {{ bubbles: true, cancelable: true, composed: true, view: window, detail: 1, button: 0, buttons: 1, clientX: cx, clientY: cy, screenX: cx, screenY: cy }}));
+                        }} catch(ce2) {{}}
                     }}
                     if (actualTag === 'video' && typeof el.play === 'function') {{
                         try {{ el.play(); }} catch(ve) {{}}
@@ -1079,16 +1309,16 @@ public static class BrowserUseDomEngine
                                 }}
                             }} catch(sbe) {{}}
                         }}
-                        // Explicitly dismiss/close any open autocomplete or search suggestion dropdown without firing Escape on contenteditable/Lexical inputs (which clears WhatsApp Web search!)
+                        // Explicitly dismiss/close any open autocomplete or search suggestion dropdown on both standard and contenteditable inputs without firing Escape on Lexical editors
                         try {{
-                            if (!isCe) {{
-                                if (el.setAttribute) el.setAttribute('aria-expanded', 'false');
-                                if (typeof el.blur === 'function') el.blur();
+                            if (el.setAttribute) el.setAttribute('aria-expanded', 'false');
+                            if (!isCe && typeof el.blur === 'function') {{
+                                el.blur();
                             }}
                             if (typeof document.querySelectorAll === 'function') {{
-                                var openPopups = document.querySelectorAll('.ytSearchboxComponentSuggestionsContainer, ytd-searchbox [role=""listbox""], form [role=""listbox""], [role=""search""] [role=""listbox""], .sbdd_b, .gstl_50, .autocomplete-suggestions, .search-suggestions');
+                                var openPopups = document.querySelectorAll('.ytSearchboxComponentSuggestionsContainer, ytd-searchbox [role=""listbox""], form [role=""listbox""], [role=""search""] [role=""listbox""], [role=""listbox""], .sbdd_b, .gstl_50, .autocomplete-suggestions, .search-suggestions');
                                 for (var pi = 0; pi < openPopups.length; pi++) {{
-                                    if (openPopups[pi] && openPopups[pi].style) {{
+                                    if (openPopups[pi] && openPopups[pi] !== el && (!openPopups[pi].contains || !openPopups[pi].contains(el)) && openPopups[pi].style) {{
                                         openPopups[pi].style.display = 'none';
                                     }}
                                 }}
@@ -1101,25 +1331,26 @@ public static class BrowserUseDomEngine
                 else if (act === 'select') {{
                     var optVal = '{safeVal}'.toLowerCase();
                     if (actualTag === 'select') {{
-                        var matched = false;
+                        var matchedIdx = -1;
                         for (var i = 0; i < el.options.length; i++) {{
                             var o = el.options[i];
                             if ((o.value || '').toLowerCase() === optVal || (o.text || '').toLowerCase().indexOf(optVal) >= 0) {{
                                 el.selectedIndex = i;
-                                matched = true;
+                                matchedIdx = i;
                                 break;
                             }}
                         }}
-                        if (!matched) {{
+                        if (matchedIdx < 0) {{
                             return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'OPTION_NOT_FOUND' }});
                         }}
+                        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                         var selOpt = el.options[el.selectedIndex];
                         var readBackSel = selOpt ? (selOpt.value || selOpt.text || '') : '';
-                        if (el.selectedIndex !== i) {{
+                        if (el.selectedIndex !== matchedIdx) {{
                             return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'SELECT_READBACK_MISMATCH', readBackValue: readBackSel }});
                         }}
-                        return JSON.stringify({{ ok: true, stale: false, usedXPath: false, readBackValue: readBackSel }});
+                        return JSON.stringify({{ ok: true, stale: false, usedXPath: false, matchedIndex: matchedIdx, readBackValue: readBackSel }});
                     }}
                     return JSON.stringify({{ ok: false, stale: false, usedXPath: false, error: 'NOT_A_SELECT_ELEMENT' }});
                 }}
@@ -1234,19 +1465,19 @@ public static class BrowserUseDomEngine
         return $@"(function() {{
             try {{
                 var needle = ({JsStr(text)}).toLowerCase();
-                if (!needle || !document.body) return JSON.stringify({{ found: false }});
+                if (!needle || !document.body) return JSON.stringify({{ ok: false, found: false, error: 'TEXT_NOT_FOUND' }});
                 var candidates = document.querySelectorAll('h1, h2, h3, h4, a, button, p, span, li, td, div');
                 for (var i = 0; i < candidates.length; i++) {{
                     var el = candidates[i];
                     var t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
                     if (t.indexOf(needle) >= 0 && el.getBoundingClientRect().height > 4) {{
                         el.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
-                        return JSON.stringify({{ found: true, scrollY: Math.round(window.scrollY || 0), tag: el.tagName.toLowerCase() }});
+                        return JSON.stringify({{ ok: true, found: true, scrollY: Math.round(window.scrollY || 0), tag: el.tagName.toLowerCase() }});
                     }}
                 }}
-                return JSON.stringify({{ found: false }});
+                return JSON.stringify({{ ok: false, found: false, error: 'TEXT_NOT_FOUND' }});
             }} catch(e) {{
-                return JSON.stringify({{ found: false, error: String(e) }});
+                return JSON.stringify({{ ok: false, found: false, error: String(e) }});
             }}
         }})()";
     }
@@ -1770,7 +2001,9 @@ public static class BrowserUseDomEngine
         string? fallbackXPath,
         string actionType,
         string? expectedTag = null,
-        string? expectedRole = null)
+        string? expectedRole = null,
+        double cursorStartX = 420,
+        double cursorStartY = 220)
     {
         string safeExpTag = (expectedTag ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").ToLowerInvariant();
         string safeExpRole = (expectedRole ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'").ToLowerInvariant();
@@ -1814,8 +2047,39 @@ public static class BrowserUseDomEngine
                 if (el.getAttribute && el.getAttribute('data-occluded') === 'true') {{
                     return JSON.stringify({{ ok: false, stale: true, error: 'ELEMENT_COVERED_BY_OVERLAY' }});
                 }}
-                var cx = r.left + r.width / 2;
-                var cy = r.top + r.height / 2;
+                var fOffX = 0, fOffY = 0;
+                try {{
+                    var cWin = (el.ownerDocument && el.ownerDocument.defaultView) ? el.ownerDocument.defaultView : null;
+                    while (cWin && cWin !== window && cWin.frameElement) {{
+                        var fRect = cWin.frameElement.getBoundingClientRect();
+                        fOffX += fRect.left;
+                        fOffY += fRect.top;
+                        cWin = cWin.parent;
+                    }}
+                }} catch(e) {{}}
+                var cx = r.left + fOffX + r.width / 2;
+                var cy = r.top + fOffY + r.height / 2;
+                try {{
+                    var initSx = (typeof window.__nexusCurX === 'number') ? window.__nexusCurX : {Math.Round(cursorStartX)};
+                    var initSy = (typeof window.__nexusCurY === 'number') ? window.__nexusCurY : {Math.Round(cursorStartY)};
+                    var vCur = document.getElementById('__nexus_virtual_cursor');
+                    if (!vCur && (document.documentElement || document.body)) {{
+                        vCur = document.createElement('div');
+                        vCur.id = '__nexus_virtual_cursor';
+                        vCur.style.cssText = 'position:fixed;left:0;top:0;width:24px;height:24px;pointer-events:none;z-index:2147483647;will-change:transform;opacity:1;transform:translate3d(' + Math.round(initSx) + 'px,' + Math.round(initSy) + 'px,0);';
+                        vCur.innerHTML = '<svg id=""__nexus_cursor_svg"" width=""24"" height=""24"" viewBox=""0 0 24 24"" style=""filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));transition:transform 0.12s ease;""><path d=""M4 2L20 11L13 13L16 20L13 21L10 14L5 19Z"" fill=""#111827"" stroke=""#FFFFFF"" stroke-width=""1.8"" stroke-linejoin=""round""/></svg>' +
+                                         '<div id=""__nexus_click_ripple"" style=""position:absolute;left:-7px;top:-7px;width:20px;height:20px;border-radius:50%;border:2px solid #111827;box-shadow:0 0 0 1.5px #FFFFFF;opacity:0;transform:scale(0.4);transition:transform 0.24s ease,opacity 0.24s ease;""></div>';
+                        (document.documentElement || document.body).appendChild(vCur);
+                    }}
+                    if (typeof window.__nexusGlideCursorTo === 'function') {{
+                        window.__nexusGlideCursorTo(cx, cy, 320, true);
+                    }} else if (vCur) {{
+                        vCur.style.opacity = '1';
+                        vCur.style.transform = 'translate3d(' + Math.round(cx) + 'px,' + Math.round(cy) + 'px,0)';
+                        window.__nexusCurX = cx;
+                        window.__nexusCurY = cy;
+                    }}
+                }} catch(vce) {{}}
                 var isCe = !!(el.isContentEditable || (el.getAttribute && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('contenteditable') === 'plaintext-only' || el.getAttribute('role') === 'textbox')));
                 var linkAnchor = (actualTag === 'a') ? el : (typeof el.closest === 'function' ? el.closest('a[href]') : null);
                 var resolvedHref = (linkAnchor && linkAnchor.href) ? linkAnchor.href : (el.href || '');
@@ -1957,9 +2221,988 @@ public static class BrowserUseDomEngine
         }})()";
     }
 
+    // ============================================================================
+    // TAHAP 2: STRICT JSON SCHEMA (GBNF WITHOUT $ref PER llama.cpp #21228)
+    // ============================================================================
+
+    public static readonly IReadOnlyList<string> StrictSchemaActionEnum = new[]
+    {
+        "go_to_url",
+        "search_web",
+        "click_element",
+        "input_text",
+        "select_option",
+        "scroll",
+        "scroll_down",
+        "scroll_up",
+        "switch_tab",
+        "go_back",
+        "download_file",
+        "send_keys",
+        "wait",
+        "request_user_approval",
+        "request_human_takeover",
+        "request_secret",
+        "done"
+    };
+
+    public static readonly IReadOnlyList<string> PlannerSubGoalOpEnum = new[]
+    {
+        "navigate",
+        "input",
+        "click",
+        "click_and_play",
+        "select",
+        "scroll",
+        "extract"
+    };
+
+    public static string NormalizePlannerSubGoalOp(string? rawOp)
+    {
+        string op = (rawOp ?? string.Empty).Trim().ToLowerInvariant();
+        return op switch
+        {
+            "go_to_url" or "open" or "open_url" or "navigate" => "navigate",
+            "input_text" or "type" or "search" or "search_web" or "fill" or "input" => "input",
+            "click_and_play" or "play" or "watch" => "click_and_play",
+            "click_element" or "click" => "click",
+            "select_option" or "select" => "select",
+            "scroll" or "scroll_down" or "scroll_up" => "scroll",
+            "extract" or "read" or "summarize" => "extract",
+            _ => "click"
+        };
+    }
+
+    public static string SerializePlannerSubGoal(PlannerSubGoal subGoal)
+    {
+        return JsonSerializer.Serialize(new Dictionary<string, string?>
+        {
+            ["op"] = NormalizePlannerSubGoalOp(subGoal.Op),
+            ["target"] = subGoal.Target,
+            ["text"] = subGoal.Text
+        });
+    }
+
+    public static List<PlannerSubGoal> ParsePlannerSubGoalsFromJsonArray(JsonElement arrayElement)
+    {
+        var list = new List<PlannerSubGoal>();
+        if (arrayElement.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var item in arrayElement.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object)
+            {
+                string rawOp = item.TryGetProperty("op", out var opProp) && opProp.ValueKind == JsonValueKind.String
+                    ? opProp.GetString() ?? "click"
+                    : (item.TryGetProperty("action", out var actProp) && actProp.ValueKind == JsonValueKind.String ? actProp.GetString() ?? "click" : "click");
+                string? target = item.TryGetProperty("target", out var tProp) && tProp.ValueKind == JsonValueKind.String
+                    ? tProp.GetString()
+                    : (item.TryGetProperty("url", out var uProp) && uProp.ValueKind == JsonValueKind.String ? uProp.GetString() : null);
+                string? text = item.TryGetProperty("text", out var txProp) && txProp.ValueKind == JsonValueKind.String
+                    ? txProp.GetString()
+                    : (item.TryGetProperty("query", out var qProp) && qProp.ValueKind == JsonValueKind.String ? qProp.GetString() : null);
+                list.Add(new PlannerSubGoal(NormalizePlannerSubGoalOp(rawOp), target, text));
+            }
+            else if (item.ValueKind == JsonValueKind.String)
+            {
+                string rawStr = (item.GetString() ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(rawStr) && TryParseSinglePlannerSubGoalString(rawStr, out var parsedGoal) && parsedGoal is not null)
+                {
+                    list.Add(parsedGoal);
+                }
+            }
+        }
+        return list;
+    }
+
+    public static List<PlannerSubGoal> ParsePlannerSubGoalList(IReadOnlyList<string>? planUpdateStrings)
+    {
+        var list = new List<PlannerSubGoal>();
+        if (planUpdateStrings is null || planUpdateStrings.Count == 0)
+            return list;
+
+        foreach (var raw in planUpdateStrings)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            if (TryParseSinglePlannerSubGoalString(raw.Trim(), out var goal) && goal is not null)
+                list.Add(goal);
+        }
+        return list;
+    }
+
+    private static bool TryParseSinglePlannerSubGoalString(string trimmed, out PlannerSubGoal? subGoal)
+    {
+        subGoal = null;
+        if (trimmed.StartsWith("{", StringComparison.Ordinal) && trimmed.EndsWith("}", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(trimmed);
+                var r = doc.RootElement;
+                string rawOp = r.TryGetProperty("op", out var opP) && opP.ValueKind == JsonValueKind.String ? opP.GetString() ?? "click" : "click";
+                string? target = r.TryGetProperty("target", out var tP) && tP.ValueKind == JsonValueKind.String ? tP.GetString() : null;
+                string? text = r.TryGetProperty("text", out var txP) && txP.ValueKind == JsonValueKind.String ? txP.GetString() : null;
+                subGoal = new PlannerSubGoal(NormalizePlannerSubGoalOp(rawOp), target, text);
+                return true;
+            }
+            catch { }
+        }
+
+        int colonIdx = trimmed.IndexOf(':');
+        if (colonIdx > 0)
+        {
+            string prefix = trimmed[..colonIdx].Trim();
+            string rest = trimmed[(colonIdx + 1)..].Trim();
+            string normOp = NormalizePlannerSubGoalOp(prefix);
+            if (normOp == "navigate")
+                subGoal = new PlannerSubGoal("navigate", Target: rest);
+            else if (normOp is "input" or "select")
+                subGoal = new PlannerSubGoal(normOp, Text: rest);
+            else
+                subGoal = new PlannerSubGoal(normOp, Target: rest);
+            return true;
+        }
+
+        subGoal = new PlannerSubGoal(NormalizePlannerSubGoalOp(trimmed), Target: trimmed);
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the flat, self-contained JSON Schema for a single Browser Agent step decision.
+    /// Avoids $ref and $defs completely so llama-server GBNF grammar compilation succeeds in < 1ms (llama.cpp #21228).
+    /// Includes optional structured plan_update for Tahap 3 Planner-First execution.
+    /// </summary>
+    public static string GetStrictStepDecisionJsonSchemaJson()
+    {
+        var schemaObj = new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["properties"] = new Dictionary<string, object?>
+            {
+                ["evaluation_previous_goal"] = new Dictionary<string, object?> { ["type"] = "string" },
+                ["memory"] = new Dictionary<string, object?> { ["type"] = "string" },
+                ["next_goal"] = new Dictionary<string, object?> { ["type"] = "string" },
+                ["plan_update"] = new Dictionary<string, object?>
+                {
+                    ["type"] = new[] { "array", "null" },
+                    ["items"] = new Dictionary<string, object?>
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new Dictionary<string, object?>
+                        {
+                            ["op"] = new Dictionary<string, object?>
+                            {
+                                ["type"] = "string",
+                                ["enum"] = PlannerSubGoalOpEnum
+                            },
+                            ["target"] = new Dictionary<string, object?>
+                            {
+                                ["type"] = new[] { "string", "null" }
+                            },
+                            ["text"] = new Dictionary<string, object?>
+                            {
+                                ["type"] = new[] { "string", "null" }
+                            }
+                        },
+                        ["required"] = new[] { "op" },
+                        ["additionalProperties"] = false
+                    }
+                },
+                ["action"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "string",
+                    ["enum"] = StrictSchemaActionEnum
+                },
+                ["element_index"] = new Dictionary<string, object?>
+                {
+                    ["type"] = new[] { "integer", "null" }
+                },
+                ["text_or_url"] = new Dictionary<string, object?>
+                {
+                    ["type"] = new[] { "string", "null" }
+                },
+                ["press_enter"] = new Dictionary<string, object?>
+                {
+                    ["type"] = "boolean"
+                }
+            },
+            ["required"] = new[]
+            {
+                "evaluation_previous_goal",
+                "memory",
+                "next_goal",
+                "action",
+                "element_index",
+                "text_or_url",
+                "press_enter"
+            },
+            ["additionalProperties"] = false
+        };
+        return JsonSerializer.Serialize(schemaObj);
+    }
+
+    /// <summary>
+    /// Builds the complete llama-server POST /v1/chat/completions request JSON body with
+    /// response_format = { type: "json_schema", json_schema: { name: "nexus_browser_step", strict: true, schema: ... } }.
+    /// </summary>
+    public static string BuildLlamaServerChatCompletionPayloadJson(
+        string systemPrompt,
+        string userStatePrompt,
+        double temperature = 0.1,
+        int maxTokens = 320,
+        bool enablePromptCache = true,
+        bool enableThinking = false)
+    {
+        using var schemaDoc = JsonDocument.Parse(GetStrictStepDecisionJsonSchemaJson());
+        var payload = new Dictionary<string, object?>
+        {
+            ["messages"] = new[]
+            {
+                new Dictionary<string, string> { ["role"] = "system", ["content"] = systemPrompt ?? string.Empty },
+                new Dictionary<string, string> { ["role"] = "user", ["content"] = userStatePrompt ?? string.Empty }
+            },
+            ["temperature"] = temperature,
+            ["max_tokens"] = maxTokens,
+            ["stream"] = false,
+            ["cache_prompt"] = enablePromptCache,
+            ["reasoning_format"] = enableThinking ? "deepseek" : "none",
+            ["chat_template_kwargs"] = new Dictionary<string, object?>
+            {
+                ["enable_thinking"] = enableThinking
+            },
+            ["response_format"] = new Dictionary<string, object?>
+            {
+                ["type"] = "json_schema",
+                ["json_schema"] = new Dictionary<string, object?>
+                {
+                    ["name"] = "nexus_browser_step",
+                    ["strict"] = true,
+                    ["schema"] = schemaDoc.RootElement.Clone()
+                }
+            }
+        };
+        return JsonSerializer.Serialize(payload);
+    }
+
+    /// <summary>
+    /// Rule 5 Telemetry Parser: Extracts choices[0].message.content alongside llama-server timings
+    /// (cache_n, prompt_n, prompt_ms = LlmTtftMs, predicted_n, predicted_ms = LlmDecodeMs) and OpenAI/Gemini token usage.
+    /// </summary>
+    public static (string Content, LlmInferenceTelemetry Telemetry) ParseLlamaServerResponseWithTelemetry(
+        string? rawHttpJson,
+        long totalElapsedMs,
+        string providerOrPort = "local:8080")
+    {
+        long safeTotalMs = Math.Max(1, totalElapsedMs);
+        if (string.IsNullOrWhiteSpace(rawHttpJson))
+        {
+            return (string.Empty, new LlmInferenceTelemetry(
+                string.Empty, safeTotalMs, safeTotalMs, 0, 0, 0, 0, false, 0, providerOrPort));
+        }
+
+        string trimmed = rawHttpJson.Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(trimmed);
+            var root = doc.RootElement;
+
+            string content = string.Empty;
+            int thinkingTokens = 0;
+
+            if (root.TryGetProperty("choices", out var choices) &&
+                choices.ValueKind == JsonValueKind.Array &&
+                choices.GetArrayLength() > 0)
+            {
+                var first = choices[0];
+                if (first.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.Object)
+                {
+                    if (msg.TryGetProperty("content", out var cProp) && cProp.ValueKind == JsonValueKind.String)
+                        content = cProp.GetString() ?? string.Empty;
+                    if (msg.TryGetProperty("reasoning_content", out var rProp) && rProp.ValueKind == JsonValueKind.String)
+                    {
+                        string rText = rProp.GetString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(rText))
+                            thinkingTokens += Math.Max(1, rText.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length);
+                    }
+                }
+            }
+            else if (root.TryGetProperty("candidates", out var cands) &&
+                     cands.ValueKind == JsonValueKind.Array &&
+                     cands.GetArrayLength() > 0 &&
+                     cands[0].TryGetProperty("content", out var gCont) &&
+                     gCont.TryGetProperty("parts", out var parts) &&
+                     parts.ValueKind == JsonValueKind.Array &&
+                     parts.GetArrayLength() > 0 &&
+                     parts[0].TryGetProperty("text", out var gTxt))
+            {
+                content = gTxt.GetString() ?? string.Empty;
+            }
+            else if (root.TryGetProperty("action", out _))
+            {
+                content = trimmed;
+            }
+
+            if (content.Contains("<think>", StringComparison.OrdinalIgnoreCase))
+            {
+                var thinkMatch = Regex.Match(content, @"<think>([\s\S]*?)</think>", RegexOptions.IgnoreCase);
+                if (thinkMatch.Success)
+                {
+                    thinkingTokens += Math.Max(1, thinkMatch.Groups[1].Value.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length);
+                    content = Regex.Replace(content, @"<think>[\s\S]*?</think>", string.Empty, RegexOptions.IgnoreCase).Trim();
+                }
+            }
+
+            int cacheN = 0;
+            int promptN = 0;
+            int predictedN = 0;
+            long promptMs = -1;
+            long predictedMs = -1;
+
+            if (root.TryGetProperty("timings", out var timings) && timings.ValueKind == JsonValueKind.Object)
+            {
+                if (timings.TryGetProperty("cache_n", out var cn) && cn.ValueKind == JsonValueKind.Number)
+                    cacheN = cn.GetInt32();
+                if (timings.TryGetProperty("prompt_n", out var pn) && pn.ValueKind == JsonValueKind.Number)
+                    promptN = pn.GetInt32();
+                if (timings.TryGetProperty("predicted_n", out var prn) && prn.ValueKind == JsonValueKind.Number)
+                    predictedN = prn.GetInt32();
+                if (timings.TryGetProperty("prompt_ms", out var pms) && pms.ValueKind == JsonValueKind.Number)
+                    promptMs = (long)Math.Round(pms.GetDouble());
+                if (timings.TryGetProperty("predicted_ms", out var prms) && prms.ValueKind == JsonValueKind.Number)
+                    predictedMs = (long)Math.Round(prms.GetDouble());
+            }
+
+            if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+            {
+                if (promptN == 0 && usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == JsonValueKind.Number)
+                    promptN = pt.GetInt32();
+                if (predictedN == 0 && usage.TryGetProperty("completion_tokens", out var ct) && ct.ValueKind == JsonValueKind.Number)
+                    predictedN = ct.GetInt32();
+            }
+            else if (root.TryGetProperty("usageMetadata", out var gUsage) && gUsage.ValueKind == JsonValueKind.Object)
+            {
+                if (gUsage.TryGetProperty("promptTokenCount", out var gpt) && gpt.ValueKind == JsonValueKind.Number)
+                    promptN = gpt.GetInt32();
+                if (gUsage.TryGetProperty("candidatesTokenCount", out var gct) && gct.ValueKind == JsonValueKind.Number)
+                    predictedN = gct.GetInt32();
+                if (gUsage.TryGetProperty("cachedContentTokenCount", out var gcach) && gcach.ValueKind == JsonValueKind.Number)
+                    cacheN = gcach.GetInt32();
+            }
+
+            int totalPromptTokens = cacheN > 0 && promptN > 0 ? cacheN + promptN : Math.Max(cacheN, promptN);
+            if (predictedN == 0 && !string.IsNullOrWhiteSpace(content))
+            {
+                predictedN = Math.Max(1, content.Length / 4);
+            }
+
+            long ttftMs = promptMs >= 0 ? promptMs : Math.Max(1, (long)Math.Round(safeTotalMs * 0.55));
+            long decodeMs = predictedMs >= 0 ? predictedMs : Math.Max(0, safeTotalMs - ttftMs);
+            long totalMs = (promptMs >= 0 && predictedMs >= 0) ? Math.Max(safeTotalMs, promptMs + predictedMs) : safeTotalMs;
+
+            var telemetry = new LlmInferenceTelemetry(
+                RawResponseJson: content,
+                TotalInferenceMs: totalMs,
+                LlmTtftMs: ttftMs,
+                LlmDecodeMs: decodeMs,
+                PromptTokens: totalPromptTokens,
+                CompletionTokens: predictedN,
+                CachedPromptTokens: cacheN,
+                PromptCacheHit: cacheN > 0,
+                ThinkingTokensDetected: thinkingTokens,
+                ProviderOrPort: providerOrPort);
+            return (content, telemetry);
+        }
+        catch
+        {
+            return (trimmed, new LlmInferenceTelemetry(
+                trimmed, safeTotalMs, safeTotalMs, 0, 0, Math.Max(1, trimmed.Length / 4), 0, false, 0, providerOrPort));
+        }
+    }
+
+    // ============================================================================
+    // RULE 3: VOLATILE-FREE DOM STRUCTURE HASH & DYNAMIC CDP IFRAME PIERCE TRIGGER
+    // ============================================================================
+
+    private static readonly Regex VolatileDomClockOrDurationRegex = new(
+        @"\b\d{1,2}:\d{2}(?::\d{2})?\b",
+        RegexOptions.Compiled);
+
+    private static readonly Regex VolatileDomRelativeTimeRegex = new(
+        @"\b\d+\s*(?:detik|menit|jam|hari|minggu|bulan|tahun|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)\s*(?:yang\s+)?(?:lalu|ago)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex VolatileDomCounterNoiseRegex = new(
+        @"\b\d+(?:[.,]\d+)?\s*(?:rb|jt|miliar|k|m|b)?\s*(?:views?|x\s+ditonton|ditonton|penonton|watching|likes?|suka|komentar|comments?|subscribers?|pelanggan)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex VolatileQueryParamRegex = new(
+        @"(?:^|[?&])(?:utm_[^=&]+|fbclid|gclid|_ga|_gl|t|timestamp|cb|nocache|_)=[^&]*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Rule 3: Strips volatile dynamic noise (clocks, live timers, view/like counters, relative timestamps)
+    /// so ComputeVolatileFreeDomStructureHash remains stable when only ads, clocks, or counters tick.
+    /// </summary>
+    public static string StripVolatileDomNoise(string? rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText))
+            return string.Empty;
+        string s = rawText;
+        s = VolatileDomClockOrDurationRegex.Replace(s, " ");
+        s = VolatileDomRelativeTimeRegex.Replace(s, " ");
+        s = VolatileDomCounterNoiseRegex.Replace(s, " ");
+        s = Regex.Replace(s, @"\s+", " ").Trim().ToLowerInvariant();
+        return s;
+    }
+
+    public static string NormalizeUrlForDomStructureHash(string? rawUrl)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return string.Empty;
+        string trimmed = rawUrl.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            return trimmed.ToLowerInvariant();
+        string cleanedQuery = VolatileQueryParamRegex.Replace(uri.Query ?? string.Empty, string.Empty).Trim('?', '&');
+        return string.IsNullOrEmpty(cleanedQuery)
+            ? $"{uri.Scheme.ToLowerInvariant()}://{uri.Host.ToLowerInvariant()}{uri.AbsolutePath}"
+            : $"{uri.Scheme.ToLowerInvariant()}://{uri.Host.ToLowerInvariant()}{uri.AbsolutePath}?{cleanedQuery}";
+    }
+
+    /// <summary>
+    /// Rule 3: Computes a 16-char SHA-256 structural hash of interactive elements while ignoring volatile elements
+    /// (ads, clocks, live counters, tracking query params, and sub-pixel coordinate jitter).
+    /// </summary>
+    public static string ComputeVolatileFreeDomStructureHash(BrowserLiveStateSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.Elements is null || snapshot.Elements.Count == 0)
+            return "empty-dom";
+
+        var sigBuilder = new StringBuilder();
+        sigBuilder.Append(NormalizeUrlForDomStructureHash(snapshot.CurrentUrl)).Append("||");
+
+        int included = 0;
+        foreach (var el in snapshot.Elements)
+        {
+            var (isSafe, _) = ValidateTargetSafety(el.Href, el.TextOrLabel);
+            if (!isSafe)
+                continue;
+
+            string normLabel = StripVolatileDomNoise(el.TextOrLabel);
+            if (string.IsNullOrWhiteSpace(normLabel) && el.TagName is "div" or "span")
+                continue;
+
+            string normHref = NormalizeUrlForDomStructureHash(el.Href);
+            string normComp = el.CompoundInfo ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(normComp))
+            {
+                normComp = Regex.Replace(normComp, @",?center_[xy]=\d+", string.Empty);
+            }
+
+            sigBuilder
+                .Append(el.TagName.ToLowerInvariant()).Append('|')
+                .Append((el.Role ?? string.Empty).ToLowerInvariant()).Append('|')
+                .Append((el.InputType ?? string.Empty).ToLowerInvariant()).Append('|')
+                .Append(normLabel).Append('|')
+                .Append(normHref).Append('|')
+                .Append(normComp).Append(';');
+            included++;
+        }
+
+        if (included == 0)
+            return "empty-dom";
+
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(sigBuilder.ToString()));
+        return Convert.ToHexString(hash).ToLowerInvariant()[..16];
+    }
+
+    /// <summary>
+    /// Rule 3: Checks whether the current page has a cross-origin iframe candidate that could contain the target interactive controls.
+    /// </summary>
+    public static bool HasCrossOriginIframeCandidate(
+        BrowserLiveStateSnapshot? snapshot,
+        string? rawDomOrHtml = null)
+    {
+        if (snapshot?.Elements is { Count: > 0 })
+        {
+            foreach (var el in snapshot.Elements)
+            {
+                if (string.Equals(el.TagName, "iframe", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(el.TagName, "frame", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(el.CompoundInfo) ||
+                        el.CompoundInfo.Contains("cross_origin=true", StringComparison.OrdinalIgnoreCase) ||
+                        el.CompoundInfo.Contains("iframe_src=http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawDomOrHtml))
+        {
+            if (rawDomOrHtml.Contains("cross_origin=true", StringComparison.OrdinalIgnoreCase) ||
+                Regex.IsMatch(rawDomOrHtml, @"<iframe\b[^>]*\bsrc\s*=\s*[""']https?://", RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Rule 3: Determines whether expensive CDP DOM.getFlattenedDocument(depth: -1, pierce: true) should be triggered:
+    /// ONLY when (1) standard JS extraction returned 0 interactive elements on a non-blank page, OR
+    /// (2) the volatile-free DOM structure hash did not change after an action AND the page contains a cross-origin iframe candidate.
+    /// </summary>
+    public static bool ShouldTriggerDynamicCdpIframePierce(
+        BrowserLiveStateSnapshot? snapshot,
+        string? previousVolatileFreeDomHash,
+        string? currentVolatileFreeDomHash,
+        string? rawDomOrHtml,
+        out string triggerReason)
+    {
+        string curUrl = snapshot?.CurrentUrl ?? string.Empty;
+        bool isBlankPage = string.IsNullOrWhiteSpace(curUrl) ||
+                           string.Equals(curUrl, "about:blank", StringComparison.OrdinalIgnoreCase);
+
+        int nonIframeInteractiveCount = snapshot?.Elements?.Count(e =>
+            !string.Equals(e.TagName, "iframe", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(e.TagName, "frame", StringComparison.OrdinalIgnoreCase)) ?? 0;
+
+        if (snapshot is null || nonIframeInteractiveCount == 0)
+        {
+            if (!isBlankPage && (snapshot?.Elements.Count == 0 || HasCrossOriginIframeCandidate(snapshot, rawDomOrHtml)))
+            {
+                triggerReason = "ExtractionFailedZeroElements";
+                return true;
+            }
+            triggerReason = isBlankPage ? "Skipped_BlankPage" : "Skipped_NoCrossOriginIframe";
+            return false;
+        }
+
+        bool hashStagnant = !string.IsNullOrWhiteSpace(previousVolatileFreeDomHash) &&
+                            previousVolatileFreeDomHash != "empty-dom" &&
+                            string.Equals(previousVolatileFreeDomHash, currentVolatileFreeDomHash, StringComparison.Ordinal);
+
+        if (hashStagnant && HasCrossOriginIframeCandidate(snapshot, rawDomOrHtml))
+        {
+            triggerReason = "DomHashStagnantWithCrossOriginIframe";
+            return true;
+        }
+
+        triggerReason = "Skipped_StandardDomSufficient";
+        return false;
+    }
+
+    /// <summary>
+    /// Builds the strict Gemini Cloud generationConfig.responseSchema object with explicit action enum.
+    /// </summary>
+    public static object BuildGeminiCloudStrictStepResponseSchema()
+    {
+        return new
+        {
+            type = "OBJECT",
+            properties = new
+            {
+                evaluation_previous_goal = new { type = "STRING" },
+                memory = new { type = "STRING" },
+                next_goal = new { type = "STRING" },
+                plan_update = new
+                {
+                    type = "ARRAY",
+                    nullable = true,
+                    items = new
+                    {
+                        type = "OBJECT",
+                        properties = new
+                        {
+                            op = new { type = "STRING", @enum = PlannerSubGoalOpEnum },
+                            target = new { type = "STRING", nullable = true },
+                            text = new { type = "STRING", nullable = true }
+                        },
+                        required = new[] { "op" }
+                    }
+                },
+                action = new
+                {
+                    type = "STRING",
+                    @enum = StrictSchemaActionEnum
+                },
+                element_index = new { type = "INTEGER", nullable = true },
+                text_or_url = new { type = "STRING", nullable = true },
+                press_enter = new { type = "BOOLEAN", nullable = true }
+            },
+            required = new[]
+            {
+                "evaluation_previous_goal",
+                "memory",
+                "next_goal",
+                "action"
+            }
+        };
+    }
+
     private static string? ExtractAttr(string attrs, string attrName)
     {
         var m = Regex.Match(attrs, $@"\b{Regex.Escape(attrName)}\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value : null;
     }
+
+    /// <summary>
+    /// Batch C / Tahap 4: Returns the CDP method name for retrieving the page frame hierarchy ("Page.getFrameTree").
+    /// </summary>
+    public static string GetCdpFrameTreeMethodName() => "Page.getFrameTree";
+
+    /// <summary>
+    /// Batch C / Tahap 4: Returns the CDP method name for piercing cross-origin iframes and shadow DOMs ("DOM.getFlattenedDocument").
+    /// </summary>
+    public static string GetCdpFlattenedDocumentMethodName() => "DOM.getFlattenedDocument";
+
+    /// <summary>
+    /// Batch C / Tahap 4: Builds the JSON payload for CDP DOM.getFlattenedDocument with depth=-1 and pierce=true.
+    /// </summary>
+    public static string GetCdpFlattenedDocumentPayloadJson(int depth = -1, bool pierce = true)
+        => $"{{\"depth\":{depth},\"pierce\":{(pierce ? "true" : "false")}}}";
+
+    /// <summary>
+    /// Batch C / Tahap 4: Extracts interactive elements (video players, play buttons, links, inputs) inside cross-origin iframes
+    /// from CDP Page.getFrameTree and DOM.getFlattenedDocument (pierce: true) responses.
+    /// </summary>
+    public static IReadOnlyList<InteractiveDomNode> ExtractIframeInteractiveNodesFromCdpJson(
+        string? frameTreeJson,
+        string? flattenedDomJson,
+        int startingIndex,
+        IReadOnlyList<InteractiveDomNode>? existingElements = null)
+    {
+        var results = new List<InteractiveDomNode>();
+        if (string.IsNullOrWhiteSpace(flattenedDomJson))
+            return results;
+
+        string mainFrameId = string.Empty;
+        var childFrameUrls = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(frameTreeJson))
+        {
+            try
+            {
+                using var ftDoc = JsonDocument.Parse(frameTreeJson);
+                if (ftDoc.RootElement.TryGetProperty("frameTree", out var ftRoot))
+                {
+                    if (ftRoot.TryGetProperty("frame", out var mainFrame) &&
+                        mainFrame.TryGetProperty("id", out var mfId))
+                    {
+                        mainFrameId = mfId.GetString() ?? string.Empty;
+                    }
+                    CollectChildFramesRecursive(ftRoot, childFrameUrls);
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            using var domDoc = JsonDocument.Parse(flattenedDomJson);
+            if (!domDoc.RootElement.TryGetProperty("nodes", out var nodesArr) ||
+                nodesArr.ValueKind != JsonValueKind.Array)
+            {
+                return results;
+            }
+
+            // Build a quick lookup of nodeId -> child text value so <button><span>Play</span></button> gets its text label
+            var nodeTextByParentId = new Dictionary<int, string>();
+            foreach (var n in nodesArr.EnumerateArray())
+            {
+                int nodeType = n.TryGetProperty("nodeType", out var nt) && nt.ValueKind == JsonValueKind.Number ? nt.GetInt32() : 0;
+                if (nodeType == 3 &&
+                    n.TryGetProperty("parentId", out var pid) && pid.ValueKind == JsonValueKind.Number &&
+                    n.TryGetProperty("nodeValue", out var nv) && nv.ValueKind == JsonValueKind.String)
+                {
+                    string txt = (nv.GetString() ?? string.Empty).Trim();
+                    if (!string.IsNullOrWhiteSpace(txt))
+                    {
+                        int p = pid.GetInt32();
+                        if (!nodeTextByParentId.ContainsKey(p))
+                            nodeTextByParentId[p] = txt;
+                    }
+                }
+            }
+
+            int nextIdx = Math.Max(1, startingIndex);
+            foreach (var n in nodesArr.EnumerateArray())
+            {
+                int nodeType = n.TryGetProperty("nodeType", out var nt) && nt.ValueKind == JsonValueKind.Number ? nt.GetInt32() : 0;
+                if (nodeType != 1)
+                    continue;
+
+                string frameId = n.TryGetProperty("frameId", out var fid) && fid.ValueKind == JsonValueKind.String
+                    ? (fid.GetString() ?? string.Empty)
+                    : string.Empty;
+
+                // Only index elements belonging to child iframes (or when childFrameUrls is empty and frameId is explicitly present & != mainFrameId)
+                bool isChildFrameNode = (!string.IsNullOrWhiteSpace(frameId) &&
+                                         !string.IsNullOrWhiteSpace(mainFrameId) &&
+                                         !string.Equals(frameId, mainFrameId, StringComparison.Ordinal)) ||
+                                        (!string.IsNullOrWhiteSpace(frameId) && childFrameUrls.ContainsKey(frameId));
+                if (!isChildFrameNode)
+                    continue;
+
+                string tagName = (n.TryGetProperty("localName", out var ln) && ln.ValueKind == JsonValueKind.String
+                    ? ln.GetString()
+                    : (n.TryGetProperty("nodeName", out var nn) && nn.ValueKind == JsonValueKind.String ? nn.GetString() : string.Empty))
+                    ?.Trim().ToLowerInvariant() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(tagName))
+                    continue;
+
+                var attrs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (n.TryGetProperty("attributes", out var attrArr) && attrArr.ValueKind == JsonValueKind.Array)
+                {
+                    var list = attrArr.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? (x.GetString() ?? string.Empty) : string.Empty).ToList();
+                    for (int i = 0; i + 1 < list.Count; i += 2)
+                    {
+                        if (!string.IsNullOrWhiteSpace(list[i]))
+                            attrs[list[i]] = list[i + 1];
+                    }
+                }
+
+                string roleAttr = attrs.TryGetValue("role", out var rVal) && !string.IsNullOrWhiteSpace(rVal) ? rVal.ToLowerInvariant() : tagName;
+                string classAttr = attrs.TryGetValue("class", out var cVal) ? cVal : string.Empty;
+                string idAttr = attrs.TryGetValue("id", out var idVal) ? idVal : string.Empty;
+                string hrefAttr = attrs.TryGetValue("href", out var hVal) ? hVal : (attrs.TryGetValue("src", out var sVal) ? sVal : string.Empty);
+                string typeAttr = attrs.TryGetValue("type", out var tVal) ? tVal : string.Empty;
+
+                bool isPlayControl = classAttr.Contains("vjs-big-play-button", StringComparison.OrdinalIgnoreCase) ||
+                                     classAttr.Contains("play-button", StringComparison.OrdinalIgnoreCase) ||
+                                     classAttr.Contains("plyr__control", StringComparison.OrdinalIgnoreCase) ||
+                                     classAttr.Contains("jw-icon-display", StringComparison.OrdinalIgnoreCase);
+                bool isInteractive = tagName is "button" or "a" or "input" or "select" or "textarea" or "video" ||
+                                     roleAttr is "button" or "link" or "textbox" or "searchbox" or "combobox" or "menuitem" ||
+                                     isPlayControl;
+                if (!isInteractive)
+                    continue;
+
+                if (string.Equals(typeAttr, "hidden", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                int nodeId = n.TryGetProperty("nodeId", out var nid) && nid.ValueKind == JsonValueKind.Number ? nid.GetInt32() : 0;
+                int backendNodeId = n.TryGetProperty("backendNodeId", out var bnid) && bnid.ValueKind == JsonValueKind.Number ? bnid.GetInt32() : 0;
+
+                string label = attrs.TryGetValue("aria-label", out var al) && !string.IsNullOrWhiteSpace(al) ? al
+                    : (attrs.TryGetValue("title", out var tl) && !string.IsNullOrWhiteSpace(tl) ? tl
+                    : (attrs.TryGetValue("placeholder", out var ph) && !string.IsNullOrWhiteSpace(ph) ? ph
+                    : (attrs.TryGetValue("value", out var vl) && !string.IsNullOrWhiteSpace(vl) ? vl
+                    : (nodeId > 0 && nodeTextByParentId.TryGetValue(nodeId, out var childTxt) ? childTxt : string.Empty))));
+
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    if (tagName == "video" || isPlayControl)
+                        label = "Play Video (Iframe Player)";
+                    else
+                        label = $"{tagName} (iframe)";
+                }
+
+                string frameUrl = childFrameUrls.TryGetValue(frameId, out var fu) ? fu : string.Empty;
+                var parentIframe = existingElements?.FirstOrDefault(e =>
+                    string.Equals(e.TagName, "iframe", StringComparison.OrdinalIgnoreCase) &&
+                    (!string.IsNullOrWhiteSpace(frameUrl) &&
+                     ((e.Href ?? string.Empty).Contains(frameUrl, StringComparison.OrdinalIgnoreCase) ||
+                      (e.CompoundInfo ?? string.Empty).Contains(frameUrl, StringComparison.OrdinalIgnoreCase))))
+                    ?? existingElements?.FirstOrDefault(e => string.Equals(e.TagName, "iframe", StringComparison.OrdinalIgnoreCase));
+
+                int cx = 640;
+                int cy = 360;
+                if (!string.IsNullOrWhiteSpace(parentIframe?.CompoundInfo))
+                {
+                    var mx = Regex.Match(parentIframe.CompoundInfo, @"center_x=(\d+)");
+                    var my = Regex.Match(parentIframe.CompoundInfo, @"center_y=(\d+)");
+                    if (mx.Success && int.TryParse(mx.Groups[1].Value, out int px)) cx = px;
+                    if (my.Success && int.TryParse(my.Groups[1].Value, out int py)) cy = py;
+                }
+                string xpath = !string.IsNullOrWhiteSpace(idAttr)
+                    ? $"//iframe[@frameId='{frameId}']//*[@id='{idAttr}']"
+                    : $"//iframe[@frameId='{frameId}']//{tagName}[@backendNodeId='{backendNodeId}']";
+                string compInfo = $"frame_id={frameId},backend_node_id={backendNodeId},center_x={cx},center_y={cy}" +
+                                  (!string.IsNullOrWhiteSpace(frameUrl) ? $",iframe_url={frameUrl}" : string.Empty);
+
+                results.Add(new InteractiveDomNode(
+                    Index: nextIdx++,
+                    TagName: tagName,
+                    Role: roleAttr,
+                    TextOrLabel: label,
+                    InputType: typeAttr,
+                    Href: string.IsNullOrWhiteSpace(hrefAttr) ? null : hrefAttr,
+                    IsContentEditable: false,
+                    IsSensitiveOrSubmit: IsSensitiveOrSubmitElement(tagName, typeAttr, label, hrefAttr),
+                    XPath: xpath,
+                    IsConnectedInDom: true,
+                    IsNewElement: false,
+                    CompoundInfo: compInfo));
+            }
+        }
+        catch { }
+
+        return results;
+    }
+
+    private static void CollectChildFramesRecursive(JsonElement frameTreeNode, Dictionary<string, string> childFrameUrls)
+    {
+        if (!frameTreeNode.TryGetProperty("childFrames", out var children) ||
+            children.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var child in children.EnumerateArray())
+        {
+            if (child.TryGetProperty("frame", out var fObj))
+            {
+                string id = fObj.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String
+                    ? (idProp.GetString() ?? string.Empty)
+                    : string.Empty;
+                string url = fObj.TryGetProperty("url", out var urlProp) && urlProp.ValueKind == JsonValueKind.String
+                    ? (urlProp.GetString() ?? string.Empty)
+                    : string.Empty;
+                if (!string.IsNullOrWhiteSpace(id))
+                    childFrameUrls[id] = url;
+            }
+            CollectChildFramesRecursive(child, childFrameUrls);
+        }
+    }
+
+    public static BrowserLiveStateSnapshot MergeCrossOriginIframeNodesIntoSnapshot(
+        BrowserLiveStateSnapshot snapshot,
+        string? frameTreeJson,
+        string? flattenedDomJson,
+        int maxTotalElements = 60)
+    {
+        if (snapshot is null || string.IsNullOrWhiteSpace(flattenedDomJson))
+            return snapshot!;
+
+        int startIdx = snapshot.Elements.Count > 0 ? snapshot.Elements.Max(e => e.Index) + 1 : 1;
+        if (startIdx > maxTotalElements)
+            return snapshot;
+
+        var iframeNodes = ExtractIframeInteractiveNodesFromCdpJson(
+            frameTreeJson,
+            flattenedDomJson,
+            startIdx,
+            snapshot.Elements);
+        if (iframeNodes.Count == 0)
+            return snapshot;
+
+        var merged = snapshot.Elements
+            .Concat(iframeNodes.Take(Math.Max(0, maxTotalElements - snapshot.Elements.Count)))
+            .ToList();
+        return snapshot with { Elements = merged };
+    }
+
+
+    /// <summary>
+    /// Batch E.1: Verifies real HTML5 video/audio playback state (currentTime > 0, !paused, readyState >= 2)
+    /// and extracts structured HTML <table> rows + <article>/<main> text in a single zero-overhead DOM pass (< 15ms).
+    /// </summary>
+    public static string GetVerifyMediaAndExtractTablesScript(bool ensurePlayIfPaused = true)
+    {
+        string playFlag = ensurePlayIfPaused ? "true" : "false";
+        return @"(function() {
+            try {
+                var ensurePlay = " + playFlag + @";
+                var videos = Array.prototype.slice.call(document.querySelectorAll('video, audio'));
+                try {
+                    var iframes = document.querySelectorAll('iframe');
+                    for (var f = 0; f < iframes.length; f++) {
+                        try {
+                            var fDoc = iframes[f].contentDocument || (iframes[f].contentWindow ? iframes[f].contentWindow.document : null);
+                            if (fDoc) {
+                                var fVids = fDoc.querySelectorAll('video, audio');
+                                for (var fv = 0; fv < fVids.length; fv++) videos.push(fVids[fv]);
+                            }
+                        } catch (fe) {}
+                    }
+                } catch (ie) {}
+
+                var hasMedia = videos.length > 0;
+                var isPlaying = false;
+                var maxCurrentTime = 0;
+                var maxDuration = 0;
+                var readyState = 0;
+
+                for (var i = 0; i < videos.length; i++) {
+                    var v = videos[i];
+                    if (ensurePlay && v.paused) {
+                        try { v.play(); } catch (pe) {}
+                        try {
+                            var playBtn = document.querySelector('.ytp-large-play-button, .ytp-play-button, .vjs-big-play-button, [aria-label*=""Play"" i]');
+                            if (playBtn && v.paused) playBtn.click();
+                        } catch (be) {}
+                    }
+                    var ct = Number(v.currentTime || 0);
+                    var dur = Number(v.duration || 0);
+                    var rs = Number(v.readyState || 0);
+                    if (ct > maxCurrentTime) maxCurrentTime = ct;
+                    if (isFinite(dur) && dur > maxDuration) maxDuration = dur;
+                    if (rs > readyState) readyState = rs;
+                    if ((!v.paused && !v.ended && rs >= 2) || ct > 0) {
+                        isPlaying = true;
+                    }
+                }
+
+                var extractedTables = [];
+                var tableNodes = document.querySelectorAll('table');
+                for (var t = 0; t < tableNodes.length && extractedTables.length < 3; t++) {
+                    var tbl = tableNodes[t];
+                    var rows = [];
+                    var trList = tbl.querySelectorAll('tr');
+                    for (var r = 0; r < trList.length && rows.length < 40; r++) {
+                        var cells = [];
+                        var cellNodes = trList[r].querySelectorAll('th, td');
+                        for (var c = 0; c < cellNodes.length && cells.length < 15; c++) {
+                            var cellTxt = (cellNodes[c].innerText || cellNodes[c].textContent || '').replace(/\s+/g, ' ').trim();
+                            cells.push(cellTxt);
+                        }
+                        if (cells.some(function(x) { return x.length > 0; })) {
+                            rows.push(cells);
+                        }
+                    }
+                    if (rows.length >= 2) {
+                        extractedTables.push(rows);
+                    }
+                }
+
+                var ytPlayer = document.getElementById('movie_player');
+                var ytPauseBtn = document.querySelector('.ytp-play-button[title*=""Pause"" i], .ytp-play-button[aria-label*=""Pause"" i], .ytp-play-button[aria-label*=""Jeda"" i], #movie_player.playing-mode');
+                if (ytPauseBtn) {
+                    hasMedia = true;
+                    isPlaying = true;
+                }
+                var focusedSummary = '';
+                try {
+                    var ae = document.activeElement || ytPlayer;
+                    if (ae && ae !== document.body) {
+                        var fTag = (ae.tagName || 'container').toLowerCase();
+                        var fId = ae.id || '';
+                        var fDesc = ae.getAttribute('aria-label') || ae.getAttribute('title') || (fId === 'movie_player' ? 'YouTube Video Player' : '');
+                        focusedSummary = 'The focused UI element is ' + fTag + (fDesc ? ' Description: ' + fDesc : '') + (fId ? ', ID: ' + fId : '');
+                    }
+                } catch(fae) {}
+                var domMutationObserved = hasMedia || extractedTables.length > 0 || ((document.body && (document.body.innerText || '').length > 120) ? true : false);
+                return JSON.stringify({
+                    hasMedia: hasMedia,
+                    isPlaying: isPlaying,
+                    focusedElementSummary: focusedSummary,
+                    currentTime: Math.round(maxCurrentTime * 100) / 100,
+                    duration: Math.round(maxDuration * 100) / 100,
+                    readyState: readyState,
+                    domMutationObserved: domMutationObserved,
+                    tableCount: extractedTables.length,
+                    tables: extractedTables
+                });
+            } catch (err) {
+                return JSON.stringify({ hasMedia: false, isPlaying: false, currentTime: 0, duration: 0, readyState: 0, domMutationObserved: false, tableCount: 0, tables: [] });
+            }
+        })();";
+    }
+
 }

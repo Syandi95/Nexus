@@ -564,3 +564,63 @@ public sealed record WebUiMigrationItem(
     string LegacyFileOrComponent,
     string ReplacementComponent,
     string MigrationAction);
+
+public sealed record LlmInferenceTelemetry(
+    string RawResponseJson,
+    long TotalInferenceMs,
+    long LlmTtftMs,
+    long LlmDecodeMs,
+    int PromptTokens,
+    int CompletionTokens,
+    int CachedPromptTokens,
+    bool PromptCacheHit,
+    int ThinkingTokensDetected = 0,
+    string ProviderOrPort = "local:8080");
+
+public sealed record StepStageTimingLog(
+    int StepNumber,
+    string ActionName,
+    bool UsedFastPath,
+    bool FastPathVerified,
+    bool FastPathFallbackToLlm,
+    long SnapshotMs,
+    long CdpPierceMs,
+    bool CdpPierceTriggered,
+    string CdpPierceReason,
+    long LlmTtftMs,
+    long LlmDecodeMs,
+    long LlmInferenceMs,
+    int PromptTokens,
+    int CompletionTokens,
+    int CachedPromptTokens,
+    bool PromptCacheHit,
+    bool PlanUpdateWasNull,
+    long ActionDispatchMs,
+    long PostVerifyMs,
+    string DomStructureHashBefore,
+    string DomStructureHashAfter,
+    bool StateDeltaVerified);
+
+public sealed record FastPathResolutionOutcome(
+    bool CanUseFastPath,
+    AgentStepDecision? CandidateDecision,
+    string RejectionOrMatchReason,
+    int MatchingCandidateCount,
+    bool BlockedBySensitivePolicy);
+
+public sealed record OodScenarioRunSummary(
+    string ScenarioId,
+    string ConfigurationLabel,
+    int RunsExecuted,
+    double AccuracyPercent,
+    double GoalVerifiedPercent,
+    long MedianTotalMs,
+    long P95TotalMs,
+    long MedianLlmTtftMs,
+    long MedianLlmDecodeMs,
+    int AvgPromptTokens,
+    int AvgCachedPromptTokens,
+    int AvgCompletionTokens,
+    double AvgLlmCallsPerRun,
+    double FastPathHitRatePercent,
+    double PlanUpdateNullCompliancePercent);

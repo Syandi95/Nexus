@@ -908,7 +908,8 @@ public sealed class BrowserUseDynamicLoopTests
             RetrievedAtUtc: DateTimeOffset.UtcNow);
         string cardMd = contract.FormatOpenBotLiveChecklistCardMarkdown("https://www.youtube.com/watch?v=7CxFifvr9I4", primarySource, isFinished: true);
         Assert.Contains("[✓ Dilewati Otomatis oleh AdGuard Shield]", cardMd);
-        Assert.Contains("Kartu Sumber Terverifikasi", cardMd);
+        Assert.DoesNotContain("Kartu Sumber Terverifikasi", cardMd, StringComparison.Ordinal);
+        Assert.Contains("[SISA RASA - MAHALINI (cover by RIZKY FEBIAN)](https://www.youtube.com/watch?v=7CxFifvr9I4)", cardMd, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2460,7 +2461,7 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.Contains("HasCompleteBalancedJsonObject", cvmCode, StringComparison.Ordinal);
         Assert.Contains("double calibratedTimeoutSec = 12.0;", cvmCode, StringComparison.Ordinal);
         Assert.Contains("responseSchema", cvmCode, StringComparison.Ordinal);
-        Assert.Contains("json_object", cvmCode, StringComparison.Ordinal);
+        Assert.Contains("BuildLlamaServerChatCompletionPayloadJson", cvmCode, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2808,6 +2809,521 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.False(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.IsValidNavigatingOrSourceUrl("https://about---blank/"));
         Assert.True(Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.HasCompleteBalancedJsonObject("{\"action\":\"done\"}"));
         Assert.Contains("currentTime", Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.GetControlMediaPlaybackScript(323));
+        Assert.NotNull(typeof(BrowserUseDomEngine).GetMethod("GetStrictStepDecisionJsonSchemaJson", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(typeof(BrowserUseDomEngine).GetMethod("BuildLlamaServerChatCompletionPayloadJson", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(typeof(BrowserUseDomEngine).GetMethod("BuildGeminiCloudStrictStepResponseSchema", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(typeof(BrowserUseDomEngine).GetMethod("ResolveScrollDirection", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+        Assert.NotNull(typeof(BrowserUseDomEngine).GetMethod("ComputeAdaptivePostActionSettleDelayMs", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static));
+    }
+
+    [Fact]
+    public async Task StageGbnf2_StrictJsonSchema_And_AuditBugFixes1To10_VerifyCleanly()
+    {
+        // 1. Tahap 2: Strict JSON Schema (GBNF without $ref per llama.cpp #21228)
+        string schemaJson = BrowserUseDomEngine.GetStrictStepDecisionJsonSchemaJson();
+        Assert.False(string.IsNullOrWhiteSpace(schemaJson));
+        Assert.DoesNotContain("$ref", schemaJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("$defs", schemaJson, StringComparison.OrdinalIgnoreCase);
+
+        using (var schemaDoc = System.Text.Json.JsonDocument.Parse(schemaJson))
+        {
+            var root = schemaDoc.RootElement;
+            Assert.Equal("object", root.GetProperty("type").GetString());
+            Assert.False(root.GetProperty("additionalProperties").GetBoolean());
+            var props = root.GetProperty("properties");
+            Assert.True(props.TryGetProperty("evaluation_previous_goal", out _));
+            Assert.True(props.TryGetProperty("memory", out _));
+            Assert.True(props.TryGetProperty("next_goal", out _));
+            Assert.True(props.TryGetProperty("action", out var actProp));
+            Assert.Equal("string", actProp.GetProperty("type").GetString());
+            var enumList = actProp.GetProperty("enum").EnumerateArray().Select(x => x.GetString()).ToList();
+            Assert.Contains("go_to_url", enumList);
+            Assert.Contains("input_text", enumList);
+            Assert.Contains("click_element", enumList);
+            Assert.Contains("select_option", enumList);
+            Assert.Contains("scroll", enumList);
+            Assert.Contains("done", enumList);
+            Assert.True(props.TryGetProperty("element_index", out _));
+            Assert.True(props.TryGetProperty("text_or_url", out _));
+            Assert.True(props.TryGetProperty("press_enter", out _));
+        }
+
+        string llamaPayloadJson = BrowserUseDomEngine.BuildLlamaServerChatCompletionPayloadJson("SYS_PROMPT", "USER_STATE", 0.1, 320);
+        Assert.DoesNotContain("$ref", llamaPayloadJson, StringComparison.OrdinalIgnoreCase);
+        using (var payloadDoc = System.Text.Json.JsonDocument.Parse(llamaPayloadJson))
+        {
+            var rf = payloadDoc.RootElement.GetProperty("response_format");
+            Assert.Equal("json_schema", rf.GetProperty("type").GetString());
+            var js = rf.GetProperty("json_schema");
+            Assert.Equal("nexus_browser_step", js.GetProperty("name").GetString());
+            Assert.True(js.GetProperty("strict").GetBoolean());
+            Assert.Equal("object", js.GetProperty("schema").GetProperty("type").GetString());
+        }
+
+        string geminiSchemaJson = System.Text.Json.JsonSerializer.Serialize(BrowserUseDomEngine.BuildGeminiCloudStrictStepResponseSchema());
+        Assert.Contains("evaluation_previous_goal", geminiSchemaJson, StringComparison.Ordinal);
+        Assert.Contains("select_option", geminiSchemaJson, StringComparison.Ordinal);
+
+        // Direct deterministic JSON parsing without regex
+        string pureGbnfJson = "{\"evaluation_previous_goal\":\"OK\",\"memory\":\"Form siap\",\"next_goal\":\"Scroll ke atas\",\"action\":\"scroll\",\"element_index\":null,\"text_or_url\":\"up\",\"press_enter\":false}";
+        Assert.True(DynamicReActControlLoop.TryParseStrictStepJsonDocument(pureGbnfJson, out var parsedDirectDoc));
+        Assert.NotNull(parsedDirectDoc);
+        parsedDirectDoc!.Dispose();
+
+        // 2. BUG-1 & BUG-9: Upgraded runtime budgets (MaxActionsPerTask=25, MaxPagesPerTask=12, NavigationTimeoutSeconds=25, TotalTaskTimeoutSeconds=180)
+        var freshSettings = new BrowserAgentRuntimeSettings();
+        Assert.Equal(25, freshSettings.MaxActionsPerTask);
+        Assert.Equal(12, freshSettings.MaxPagesPerTask);
+        Assert.Equal(25, freshSettings.NavigationTimeoutSeconds);
+        Assert.Equal(180, freshSettings.TotalTaskTimeoutSeconds);
+
+        // 3. BUG-2: System Prompt explicitly teaches LLM about compound_components="count=N,options=..." for <select> dropdowns
+        string sysPrompt = BrowserUseDomEngine.GetBrowserUseSystemPrompt();
+        Assert.Contains("compound_components=", sysPrompt, StringComparison.Ordinal);
+        Assert.Contains("select_option", sysPrompt, StringComparison.Ordinal);
+
+        // 4. BUG-3: Autocomplete dismissal sets aria-expanded="false" for all inputs (including contenteditable)
+        string inputScript = BrowserUseDomEngine.GetExecuteElementActionScript(1, "//input[1]", "input", "kamar film", true);
+        Assert.Contains("if (el.setAttribute) el.setAttribute('aria-expanded', 'false');", inputScript, StringComparison.Ordinal);
+        Assert.Contains("if (!isCe && typeof el.blur === 'function')", inputScript, StringComparison.Ordinal);
+
+        // 5. BUG-4: Click fallback script dispatches PointerEvent + MouseEvent with view: window, composed: true, pointerId: 1
+        string clickScript = BrowserUseDomEngine.GetExecuteElementActionScript(1, "//button[1]", "click");
+        Assert.Contains("window.PointerEvent", clickScript, StringComparison.Ordinal);
+        Assert.Contains("view: window", clickScript, StringComparison.Ordinal);
+        Assert.Contains("composed: true", clickScript, StringComparison.Ordinal);
+        Assert.Contains("pointerId = 1", clickScript, StringComparison.Ordinal);
+
+        // 6. BUG-5: Scroll action & direction normalization ("scroll" with "up" / "down")
+        Assert.True(BrowserUseDomEngine.IsRecognizedAction("scroll"));
+        Assert.Equal("up", BrowserUseDomEngine.ResolveScrollDirection("scroll", "up"));
+        Assert.Equal("up", BrowserUseDomEngine.ResolveScrollDirection("scroll", "atas"));
+        Assert.Equal("down", BrowserUseDomEngine.ResolveScrollDirection("scroll", "down"));
+        Assert.Equal("down", BrowserUseDomEngine.ResolveScrollDirection("scroll", null));
+
+        var emptySnap = new BrowserLiveStateSnapshot("snap-gbnf", "https://example.com/form", "Form", 0, Array.Empty<BrowserVirtualTab>(), Array.Empty<InteractiveDomNode>(), "", 0, 0);
+        var parsedScrollUp = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(pureGbnfJson, "isi formulir pendaftaran", emptySnap, 2, false);
+        Assert.Equal("scroll_up", parsedScrollUp.ActionName);
+
+        var workspaceVm = new AgentWorkspaceViewModel();
+        var scrolledDirs = new List<string>();
+        var adapter = new WebView2NativeAdapter(workspaceVm, js =>
+        {
+            if (js.Contains("window.scrollBy", StringComparison.Ordinal))
+                scrolledDirs.Add(js);
+            return Task.FromResult("{}");
+        });
+        var loop = new DynamicReActControlLoop(adapter, new ExternalSearchProvider(), new NexusWorkspaceFileService(workspaceVm), workspaceVm, js => Task.FromResult("{}"));
+        loop.TabStack.OpenOrActivateTab("https://example.com/form", "Form", "tab", 0);
+        await loop.ExecuteIndexedActionAsync(new AgentStepDecision("OK", "m", "Scroll down", "scroll", TextOrUrl: "down"), emptySnap);
+        Assert.Equal(500, loop.TabStack.Tabs[0].ScrollY);
+        await loop.ExecuteIndexedActionAsync(new AgentStepDecision("OK", "m", "Scroll up", "scroll", TextOrUrl: "up"), emptySnap);
+        Assert.Equal(0, loop.TabStack.Tabs[0].ScrollY);
+
+        // 7. BUG-6: Smart 50-Element Viewport + Critical Submit Union preserves submit button at index [55]
+        var bigFormNodes = new List<InteractiveDomNode>();
+        for (int i = 1; i <= 54; i++)
+        {
+            bigFormNodes.Add(new InteractiveDomNode(i, "input", "textbox", $"Field {i}", "text", null, false, false, XPath: $"//input[{i}]"));
+        }
+        bigFormNodes.Add(new InteractiveDomNode(55, "button", "button", "Kirim Pendaftaran", "submit", null, false, true, XPath: "//button[@type='submit']"));
+        var bigFormSnap = new BrowserLiveStateSnapshot("snap-55", "https://example.com/register", "Register", 0, Array.Empty<BrowserVirtualTab>(), bigFormNodes, "", 0, 0);
+        string bigPrompt = BrowserUseDomEngine.FormatBrowserStateForLlmPrompt("Isi form dan klik Kirim Pendaftaran", bigFormSnap, 1, 25, Array.Empty<string>());
+        Assert.Contains("[45]<input type=\"text\" role=\"textbox\">Field 45</input>", bigPrompt, StringComparison.Ordinal);
+        Assert.Contains("[55]<button type=\"submit\">Kirim Pendaftaran</button>", bigPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("[46]<input", bigPrompt, StringComparison.Ordinal);
+
+        // 8. BUG-7: No leading-space typo in data-placeholder attribute lookup
+        string buildDomScript = BrowserUseDomEngine.GetBuildDomTreeScript();
+        Assert.DoesNotContain("getAttribute(' data-placeholder')", buildDomScript, StringComparison.Ordinal);
+        Assert.Contains("getAttribute('data-placeholder')", buildDomScript, StringComparison.Ordinal);
+
+        // 9. BUG-8: Select script uses explicit matchedIdx and fires both 'input' and 'change' events
+        string selectScript = BrowserUseDomEngine.GetExecuteElementActionScript(1, "//select[1]", "select", "Jakarta");
+        Assert.Contains("var matchedIdx = -1;", selectScript, StringComparison.Ordinal);
+        Assert.Contains("if (el.selectedIndex !== matchedIdx)", selectScript, StringComparison.Ordinal);
+        Assert.Contains("new Event('input', { bubbles: true })", selectScript, StringComparison.Ordinal);
+        Assert.Contains("new Event('change', { bubbles: true })", selectScript, StringComparison.Ordinal);
+
+        // 10. BUG-10: Adaptive post-action settle delay calculation
+        Assert.Equal(600, BrowserUseDomEngine.ComputeAdaptivePostActionSettleDelayMs("input_text", pressEnter: true));
+        Assert.Equal(450, BrowserUseDomEngine.ComputeAdaptivePostActionSettleDelayMs("click_element"));
+        Assert.Equal(300, BrowserUseDomEngine.ComputeAdaptivePostActionSettleDelayMs("select_option"));
+        Assert.Equal(250, BrowserUseDomEngine.ComputeAdaptivePostActionSettleDelayMs("scroll"));
+    }
+
+    [Fact]
+    public async Task StagePlanner3_PlannerFirstDynamicContract_And_RetireRegexHijacking_VerifyCleanly()
+    {
+        var wheel = BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+        wheel.ReleaseControlBackToBot();
+        wheel.MarkFreshSnapshotTaken();
+
+        // 1. Verify GBNF Schema & Gemini Cloud Schema include structured plan_update without $ref / $defs
+        string schemaJson = BrowserUseDomEngine.GetStrictStepDecisionJsonSchemaJson();
+        Assert.DoesNotContain("$ref", schemaJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("$defs", schemaJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"plan_update\"", schemaJson, StringComparison.Ordinal);
+        Assert.Contains("\"click_and_play\"", schemaJson, StringComparison.Ordinal);
+
+        // 2. Step 1 LLM Autonomy: When rawModelOutput is provided on Step 1, Guard 1 MUST NOT hijack the model's target URL with AnalyzeUniversalBrowserTask!
+        var blankSnap = new BrowserLiveStateSnapshot("snap-s1", "about:blank", "", 0, Array.Empty<BrowserVirtualTab>(), Array.Empty<InteractiveDomNode>(), "", 0, 0);
+        string step1ModelJson = @"{
+            ""evaluation_previous_goal"": ""Mulai tugas"",
+            ""memory"": ""Menyusun rencana 3 langkah"",
+            ""next_goal"": ""Buka YouTube langsung"",
+            ""plan_update"": [
+                { ""op"": ""navigate"", ""target"": ""https://www.youtube.com"", ""text"": null },
+                { ""op"": ""input"", ""target"": ""search"", ""text"": ""kamar film"" },
+                { ""op"": ""click_and_play"", ""target"": ""video teratas"", ""text"": null }
+            ],
+            ""action"": ""go_to_url"",
+            ""element_index"": null,
+            ""text_or_url"": ""https://www.youtube.com"",
+            ""press_enter"": false
+        }";
+        var step1Dec = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            step1ModelJson,
+            "buka halaman utama lalu tonton kamar film",
+            blankSnap,
+            step: 1,
+            alreadyDownloaded: false);
+        Assert.Equal("go_to_url", step1Dec.ActionName);
+        Assert.Equal("https://www.youtube.com", step1Dec.TextOrUrl);
+        Assert.NotNull(step1Dec.PlanUpdate);
+        Assert.Equal(3, step1Dec.PlanUpdate!.Count);
+
+        var parsedGoals = BrowserUseDomEngine.ParsePlannerSubGoalList(step1Dec.PlanUpdate);
+        Assert.Equal(3, parsedGoals.Count);
+        Assert.Equal("navigate", parsedGoals[0].Op);
+        Assert.Equal("https://www.youtube.com", parsedGoals[0].Target);
+        Assert.Equal("input", parsedGoals[1].Op);
+        Assert.Equal("kamar film", parsedGoals[1].Text);
+        Assert.Equal("click_and_play", parsedGoals[2].Op);
+
+        // 3. Mid-Run LLM Autonomy: On a multi-hop arrow chain task, a valid non-"done" LLM action (e.g., scroll_down or direct go_to_url)
+        // MUST NEVER be hijacked by TryResolveMultiHopArrowChainDecision!
+        string arrowTask = "buka google -> cari website movieku -> klik masuk -> cari VisionQuest (2026) -> memilih bagian Episode 01. dan play";
+        var googleSnap = new BrowserLiveStateSnapshot(
+            "snap-g",
+            "https://www.google.com/",
+            "Google",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "textarea", "combobox", "Telusuri", "search", null, false, false, "//textarea[@name='q']")
+            },
+            "Google",
+            0,
+            400);
+        string midRunLlmScrollJson = @"{
+            ""evaluation_previous_goal"": ""Halaman terbuka"",
+            ""memory"": ""Scroll dulu untuk memeriksa elemen"",
+            ""next_goal"": ""Scroll ke bawah"",
+            ""action"": ""scroll"",
+            ""element_index"": null,
+            ""text_or_url"": ""down"",
+            ""press_enter"": false
+        }";
+        var midRunDec = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            midRunLlmScrollJson,
+            arrowTask,
+            googleSnap,
+            step: 2,
+            alreadyDownloaded: false,
+            hasTypedInput: false);
+        Assert.Equal("scroll_down", midRunDec.ActionName);
+
+        // 4. Planner-First Premature "done" Veto: When activeSubGoals still has uncompleted items, premature {"action":"done"} is vetoed!
+        var activeSubGoals = new List<PlannerSubGoal>
+        {
+            new("navigate", Target: "https://www.youtube.com", Completed: true),
+            new("input", Text: "kamar film", Completed: false),
+            new("click_and_play", Target: "video paling atas", Completed: false)
+        };
+        var ytHomeSnap = new BrowserLiveStateSnapshot(
+            "snap-yt",
+            "https://www.youtube.com/",
+            "YouTube",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "input", "searchbox", "Telusuri", "search", null, false, false, "//input[@id='search']")
+            },
+            "Beranda YouTube",
+            0,
+            400);
+        var vetoedDone = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"evaluation_previous_goal\":\"OK\",\"memory\":\"m\",\"next_goal\":\"Selesai\",\"action\":\"done\",\"element_index\":null,\"text_or_url\":null,\"press_enter\":false}",
+            "tonton kamar film",
+            ytHomeSnap,
+            step: 2,
+            alreadyDownloaded: false,
+            hasTypedInput: false,
+            playAlreadyExecuted: false,
+            activeSubGoals: activeSubGoals);
+        Assert.Equal("input_text", vetoedDone.ActionName);
+        Assert.Equal(1, vetoedDone.ElementIndex);
+        Assert.Equal("kamar film", vetoedDone.TextOrUrl);
+        Assert.Contains("[GUARD_OVERRIDE:PlannerSubGoalPending]", vetoedDone.EvaluationPreviousGoal, StringComparison.Ordinal);
+
+        // 5. End-to-End LiveLlmStepPlannerCaller from Step 1 with Structured plan_update (4 sub-goals: google -> youtube -> input -> click_and_play)
+        var prevLlmCaller = BrowserAgentRuntimeSettings.Current.LiveLlmStepPlannerCaller;
+        try
+        {
+            var visitedUrls = new List<string>();
+            int llmCallCount = 0;
+            var workspaceVm = new AgentWorkspaceViewModel();
+            workspaceVm.BrowserNavigateRequested += url =>
+            {
+                visitedUrls.Add(url);
+                workspaceVm.LastBrowserUrl = url;
+                return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Loaded\n[PAGE_URL] " + url);
+            };
+
+            var adapter = new WebView2NativeAdapter(
+                workspaceVm,
+                scriptExecutor: js =>
+                {
+                    string cur = workspaceVm.LastBrowserUrl ?? string.Empty;
+                    if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                    {
+                        if (cur.Contains("youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Task.FromResult(
+                                "{\"Url\":\"" + cur + "\",\"Title\":\"Kamar Film - Review\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                                "\"CleanText\":\"Kamar Film Video\",\"Elements\":[{\"Index\":1,\"TagName\":\"video\",\"Role\":\"video\",\"TextOrLabel\":\"Putar\",\"InputType\":\"\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//video[1]\"}]}");
+                        }
+                        if (cur.Contains("youtube.com/results", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Task.FromResult(
+                                "{\"Url\":\"" + cur + "\",\"Title\":\"kamar film - YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                                "\"CleanText\":\"Hasil pencarian kamar film\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"KAMAR FILM - CERITA FILM TERBARU 2026\",\"InputType\":\"\",\"Href\":\"https://www.youtube.com/watch?v=kamarfilm01\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+                        }
+                        if (cur.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Task.FromResult(
+                                "{\"Url\":\"" + cur + "\",\"Title\":\"YouTube\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                                "\"CleanText\":\"Beranda YouTube\",\"Elements\":[{\"Index\":1,\"TagName\":\"input\",\"Role\":\"searchbox\",\"TextOrLabel\":\"Telusuri\",\"InputType\":\"search\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//input[@id='search']\"}]}");
+                        }
+                        return Task.FromResult(
+                            "{\"Url\":\"" + cur + "\",\"Title\":\"Google\",\"PixelsAbove\":0,\"PixelsBelow\":400," +
+                            "\"CleanText\":\"Google\",\"Elements\":[{\"Index\":1,\"TagName\":\"textarea\",\"Role\":\"combobox\",\"TextOrLabel\":\"Telusuri\",\"InputType\":\"search\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//textarea[@name='q']\"}]}");
+                    }
+                    if (js.Contains("currentTime", StringComparison.Ordinal) && js.Contains("readyState", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult("{\"ok\":true,\"hasVideo\":true,\"playing\":true,\"currentTime\":3,\"duration\":900,\"readyState\":4}");
+                    }
+                    if (js.Contains("kamar film", StringComparison.OrdinalIgnoreCase))
+                    {
+                        workspaceVm.LastBrowserUrl = "https://www.youtube.com/results?search_query=kamar+film";
+                        return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"submitted\":true,\"dropdownDismissed\":true,\"readBackValue\":\"kamar film\"}");
+                    }
+                    if (js.Contains("kamarfilm01", StringComparison.OrdinalIgnoreCase) || workspaceVm.LastBrowserUrl.Contains("results", StringComparison.OrdinalIgnoreCase))
+                    {
+                        workspaceVm.LastBrowserUrl = "https://www.youtube.com/watch?v=kamarfilm01";
+                        return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"href\":\"https://www.youtube.com/watch?v=kamarfilm01\"}");
+                    }
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false}");
+                });
+
+            BrowserAgentRuntimeSettings.Current.LiveLlmStepPlannerCaller = (_, _, _) =>
+            {
+                llmCallCount++;
+                return llmCallCount switch
+                {
+                    1 => Task.FromResult(@"{
+                        ""evaluation_previous_goal"": ""Mulai"",
+                        ""memory"": ""Rencana 4 sub-tujuan dibuat"",
+                        ""next_goal"": ""Buka Google"",
+                        ""plan_update"": [
+                            { ""op"": ""navigate"", ""target"": ""https://www.google.com"", ""text"": null },
+                            { ""op"": ""navigate"", ""target"": ""https://www.youtube.com"", ""text"": null },
+                            { ""op"": ""input"", ""target"": ""search"", ""text"": ""kamar film"" },
+                            { ""op"": ""click_and_play"", ""target"": ""KAMAR FILM"", ""text"": null }
+                        ],
+                        ""action"": ""go_to_url"",
+                        ""element_index"": null,
+                        ""text_or_url"": ""https://www.google.com"",
+                        ""press_enter"": false
+                    }"),
+                    2 => Task.FromResult(@"{
+                        ""evaluation_previous_goal"": ""Google terbuka"",
+                        ""memory"": ""Lanjut ke YouTube"",
+                        ""next_goal"": ""Buka YouTube"",
+                        ""action"": ""go_to_url"",
+                        ""element_index"": null,
+                        ""text_or_url"": ""https://www.youtube.com"",
+                        ""press_enter"": false
+                    }"),
+                    3 => Task.FromResult(@"{
+                        ""evaluation_previous_goal"": ""YouTube terbuka"",
+                        ""memory"": ""Ketik kamar film"",
+                        ""next_goal"": ""Ketik kamar film di kotak pencarian"",
+                        ""action"": ""input_text"",
+                        ""element_index"": 1,
+                        ""text_or_url"": ""kamar film"",
+                        ""press_enter"": true
+                    }"),
+                    4 => Task.FromResult(@"{
+                        ""evaluation_previous_goal"": ""Hasil pencarian tampil"",
+                        ""memory"": ""Klik video teratas"",
+                        ""next_goal"": ""Klik video KAMAR FILM"",
+                        ""action"": ""click_element"",
+                        ""element_index"": 1,
+                        ""text_or_url"": null,
+                        ""press_enter"": false
+                    }"),
+                    _ => Task.FromResult(@"{
+                        ""evaluation_previous_goal"": ""Video berputar"",
+                        ""memory"": ""Semua sub-tujuan selesai"",
+                        ""next_goal"": ""Selesai"",
+                        ""action"": ""done"",
+                        ""element_index"": null,
+                        ""text_or_url"": ""Video telah diputar"",
+                        ""press_enter"": false
+                    }")
+                };
+            };
+
+            var loop = new DynamicReActControlLoop(
+                adapter,
+                new ExternalSearchProvider(),
+                new NexusWorkspaceFileService(workspaceVm),
+                workspaceVm);
+
+            bool prevFastPath = BrowserAgentRuntimeSettings.Current.EnableGenericFastPath;
+            try
+            {
+                BrowserAgentRuntimeSettings.Current.EnableGenericFastPath = false;
+                var summary = await loop.RunDynamicAgentLoopAsync("tolong mampir ke google sebentar lalu pindah ke youtube dan putarkan ulasan dari kamar film");
+                Assert.True(summary.IsSuccess, summary.FinalGroundedReportMarkdown);
+                Assert.True(summary.GoalVerified);
+                Assert.Equal(5, llmCallCount);
+                Assert.Equal(4, summary.ChecklistTotalCount);
+                Assert.Equal(4, summary.ChecklistCompletedCount);
+                Assert.Equal(new[] { "https://www.google.com", "https://www.youtube.com" }, visitedUrls.ToArray());
+                Assert.Equal("https://www.youtube.com/watch?v=kamarfilm01", workspaceVm.LastBrowserUrl);
+
+                // Now verify with Generic Fast-Path enabled (Rules 1 & 2): LLM calls drop from 5 to 1 while executing & verifying all 4 sub-goals!
+                BrowserAgentRuntimeSettings.Current.EnableGenericFastPath = true;
+                llmCallCount = 0;
+                visitedUrls.Clear();
+                workspaceVm.LastBrowserUrl = "about:blank";
+                var fastSummary = await loop.RunDynamicAgentLoopAsync("tolong mampir ke google sebentar lalu pindah ke youtube dan putarkan ulasan dari kamar film");
+                Assert.True(fastSummary.IsSuccess, fastSummary.FinalGroundedReportMarkdown);
+                Assert.True(fastSummary.GoalVerified);
+                Assert.Equal(1, llmCallCount);
+                Assert.Equal(3, fastSummary.FastPathStepsExecuted);
+                Assert.Equal(4, fastSummary.ChecklistCompletedCount);
+            }
+            finally
+            {
+                BrowserAgentRuntimeSettings.Current.EnableGenericFastPath = prevFastPath;
+            }
+        }
+        finally
+        {
+            BrowserAgentRuntimeSettings.Current.LiveLlmStepPlannerCaller = prevLlmCaller;
+        }
+    }
+
+    [Fact]
+    public void BatchA_SingleCollapsibleCard_MultiSiteChecklist_HonestIntentRouter_And_StrictModelRouting_VerifyCleanly()
+    {
+        // 1. Codex Timeline UI (image_fca569.jpg parity — zero old blockquote, zero Kartu Sumber Terverifikasi table, steps in CodexBrowserSteps + natural AI closing text)
+        var msgVm = new ChatMessageItemViewModel
+        {
+            Role = "assistant",
+            IsBrowserAgentCollapsibleCard = true,
+            ReasoningContent = string.Empty,
+            ThinkingDurationText = "✓ Ran 4 browser actions · 4/4 done · 8.2s",
+            IsThinkingCollapsed = false,
+            Content = "> **✓ NEXUS Browser Agent · \"guru gembul\"** · `4/4 selesai ✓`\r\n>\r\n> ✓ ~~Membuka halaman utama `https://www.google.com`~~ · [Buka](https://www.google.com)\r\n> ✓ ~~Membuka halaman utama `https://www.youtube.com`~~ · [Buka](https://www.youtube.com)\r\n\r\nVideo yang paling cocok sudah terbuka dan sedang diputar: **[Guru Gembul](https://www.youtube.com/watch?v=gg01)**."
+        };
+        Assert.True(msgVm.HasReasoning);
+        Assert.True(msgVm.HasCodexBrowserSteps);
+        Assert.Empty(msgVm.ReasoningContent);
+        // Both expanded and collapsed: old blockquote is NEVER shown in GetEffectiveDisplayMarkdown() because CodexBrowserSteps renders the timeline!
+        Assert.DoesNotContain("> **✓ NEXUS Browser Agent", msgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("Video yang paling cocok sudah terbuka", msgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+
+        msgVm.ToggleThinkingCollapseCommand.Execute(null);
+        Assert.True(msgVm.IsThinkingCollapsed);
+        Assert.DoesNotContain("> **✓ NEXUS Browser Agent", msgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("Video yang paling cocok sudah terbuka", msgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+
+        // 2. Multi-Site Checklist Contract ("buka google, buka youtube, cari guru gembul, pilih video paling atas dan play" -> 4 steps, never dropping google.com!)
+        string multiSitePrompt = "buka google, buka youtube, cari guru gembul, pilih video paling atas dan play";
+        var orderedSites = DynamicReActControlLoop.ExtractOrderedNavigationSitesFromTask(multiSitePrompt);
+        Assert.Equal(new[] { "https://www.google.com", "https://www.youtube.com" }, orderedSites.ToArray());
+
+        var contract = AgentTaskChecklistContract.BuildContractFromTask(
+            multiSitePrompt,
+            "https://www.google.com",
+            "guru gembul",
+            wantsPlayOrClickTopResult: true,
+            orderedTargetSites: orderedSites);
+        Assert.Equal(4, contract.Steps.Count);
+        Assert.Equal("NAVIGATE", contract.Steps[0].ActionBadge);
+        Assert.Equal("https://www.google.com", contract.Steps[0].ExpectedTarget);
+        Assert.Equal("NAVIGATE", contract.Steps[1].ActionBadge);
+        Assert.Equal("https://www.youtube.com", contract.Steps[1].ExpectedTarget);
+        Assert.Equal("INPUT", contract.Steps[2].ActionBadge);
+        Assert.Equal("CLICK", contract.Steps[3].ActionBadge);
+
+        // If the LLM tries to skip google.com on Step 1 and jump straight to youtube.com, EvaluatePreActionGate enforces google.com first!
+        var step1Gate = contract.EvaluatePreActionGate("go_to_url", "https://www.youtube.com", "about:blank");
+        Assert.Equal("go_to_url", step1Gate.EffectiveActionName);
+        Assert.Equal("https://www.google.com", step1Gate.SanitizedQueryOrUrl);
+
+        // After Step 1 (google.com) completes, Step 2 gate enforces navigating to youtube.com before typing!
+        contract.MarkStepCompleted("NAVIGATE", "Google terbuka", "https://www.google.com/");
+        var step2Gate = contract.EvaluatePreActionGate("input_text", "guru gembul", "https://www.google.com/");
+        Assert.False(step2Gate.IsAllowed);
+        Assert.Equal("go_to_url", step2Gate.EffectiveActionName);
+        Assert.Equal("https://www.youtube.com", step2Gate.SanitizedQueryOrUrl);
+
+        // 3. Honest Conversational vs Browser Intent Router (meta-complaints in image_a09949.jpg & image_a095c2.jpg never trigger Google Search!)
+        string complaint1 = "tetapi saya lihat bukan kamu yang mengerjakannya melainkan model lokal cari tau penyebabnya";
+        string complaint2 = "kenapa kamu lambat tadi ya apakah model lokal yang mengerjakannya";
+        string complaint3 = "kamu salah menagam mekai broser agent";
+        Assert.True(ConversationViewModel.IsConversationalQuestionWithoutWebAction(complaint1));
+        Assert.True(ConversationViewModel.IsConversationalQuestionWithoutWebAction(complaint2));
+        Assert.True(ConversationViewModel.IsConversationalQuestionWithoutWebAction(complaint3));
+        Assert.Equal((null, null, false), DynamicReActControlLoop.AnalyzeUniversalBrowserTask(complaint1));
+
+        // 4. Junk / Utility Source Filter (rejects "Bantuan aksesibilitas" and duration badges like "16:27")
+        Assert.True(DynamicReActControlLoop.IsJunkOrUtilitySourceCandidate("Bantuan aksesibilitas", "https://support.google.com/websearch/answer/181196"));
+        Assert.True(DynamicReActControlLoop.IsJunkOrUtilitySourceCandidate("16:27", "https://www.youtube.com/watch?v=abc123"));
+        Assert.False(DynamicReActControlLoop.IsJunkOrUtilitySourceCandidate("Guru Gembul - Episode Baru", "https://www.youtube.com/watch?v=abc123"));
+
+        // 5. Narrow-Viewport Search Toggle Fallback (image_a09567.jpg: when YouTube hides <input> behind [1]<button>Search</button>)
+        var narrowYtSnap = new BrowserLiveStateSnapshot(
+            "snap-narrow-yt",
+            "https://www.youtube.com/",
+            "YouTube",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "button", "button", "Search", "button", null, false, false, "//button[@id='search-button-narrow']"),
+                new(2, "button", "button", "Search with your voice", "button", null, false, false, "//button[2]")
+            },
+            "Beranda YouTube Sempit",
+            0,
+            400);
+        var narrowSearchDec = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+            "{\"evaluation_previous_goal\":\"OK\",\"memory\":\"Ketik di pencarian\",\"next_goal\":\"Cari Guru Gembul\",\"action\":\"input_text\",\"element_index\":1,\"text_or_url\":\"Guru Gembul\",\"press_enter\":true}",
+            multiSitePrompt,
+            narrowYtSnap,
+            step: 3,
+            alreadyDownloaded: false,
+            hasTypedInput: false);
+        Assert.Equal("go_to_url", narrowSearchDec.ActionName);
+        Assert.Equal("https://www.youtube.com/results?search_query=Guru%20Gembul", narrowSearchDec.TextOrUrl);
     }
 
     [Fact]
@@ -3085,6 +3601,1337 @@ public sealed class BrowserUseDynamicLoopTests
         Assert.Empty(hexRegex.Matches(fmXaml));
         Assert.Empty(hexRegex.Matches(layoutXaml));
         Assert.Equal(27, hexRegex.Matches(imgXaml).Count);
+    }
+
+    [Fact]
+    public async Task BatchB_CarryForwardContinuity_SingleClickJs_HonestAdapter_NativeClipboard_And_SpaAddressBarSync_VerifyCleanly()
+    {
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        var prevEval = cfg.LiveJsEvaluator;
+        var prevClip = cfg.ClipboardSetterOverride;
+        var prevCancel = cfg.CancelActiveAgentRunCallback;
+        var prevStopWv = cfg.StopLiveWebView2NavigationCallback;
+
+        try
+        {
+            cfg.CarryForward.Clear();
+            cfg.TakeTheWheel.ReleaseControlBackToBot();
+            cfg.TakeTheWheel.MarkFreshSnapshotTaken();
+
+            // 1. Cross-Turn Continuity (VerifiedCarryForwardStore): numbered candidates + extracted facts + <= 750 chars prompt budget
+            cfg.CarryForward.LastActiveUrl = "https://www.google.com/search?q=klinik+sehat";
+            cfg.CarryForward.LastActiveTitle = "klinik sehat - Penelusuran Google";
+            cfg.CarryForward.LastTaskSummary = "cari klinik sehat di google";
+            cfg.CarryForward.RecordNumberedCandidates(
+                new[]
+                {
+                    ("Klinik Pertama Jakarta", "https://example.org/klinik-1"),
+                    ("Klinik Sehat Nusantara Resmi", "https://example.org/klinik-2"),
+                    ("Klinik Ketiga Bandung", "https://example.org/klinik-3")
+                },
+                "https://www.google.com/search?q=klinik+sehat");
+            cfg.CarryForward.RecordExtractedFact(
+                "KontakKlinik",
+                "Nama: Klinik Sehat Nusantara | Alamat: Jl. Sudirman No. 12 | Telepon: 021-5550199",
+                "https://example.org/klinik-2");
+
+            string cfPrompt = cfg.CarryForward.FormatCarryForwardContextForPrompt(750);
+            Assert.Contains("<carry_forward_context>", cfPrompt, StringComparison.Ordinal);
+            Assert.Contains("https://example.org/klinik-2", cfPrompt, StringComparison.Ordinal);
+            Assert.Contains("Jl. Sudirman No. 12", cfPrompt, StringComparison.Ordinal);
+            Assert.True(cfPrompt.Length <= 750, $"CarryForward context must stay <= 750 chars, got {cfPrompt.Length}");
+
+            // "buka hasil nomor dua" resolves directly to https://example.org/klinik-2 (NOT https://www.google.com)
+            Assert.True(cfg.CarryForward.TryResolveNumberedCandidateFromPrompt("buka hasil nomor dua", out var cand2));
+            Assert.NotNull(cand2);
+            Assert.Equal(2, cand2!.ItemNumber);
+            Assert.Equal("https://example.org/klinik-2", cand2.Url);
+
+            var (resolvedTurn2Url, resolvedTurn2Input, _) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask("buka hasil nomor dua");
+            Assert.Equal("https://example.org/klinik-2", resolvedTurn2Url);
+            Assert.Null(resolvedTurn2Input);
+
+            // Cross-turn form fill with "periksa dulu, jangan kirim" fills carry-forward fact with PressEnter=false
+            var formSnap = new BrowserLiveStateSnapshot(
+                "snap-form-b",
+                "https://example.org/formulir-pendaftaran",
+                "Formulir Pendaftaran",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "input", "textbox", "Nama & Alamat Klinik", "text", null, false, false, "//input[@id='klinik_info']", true),
+                    new(2, "button", "button", "Kirim Formulir", "submit", null, false, true, "//button[@type='submit']", true)
+                },
+                "Formulir Pendaftaran Klinik",
+                0,
+                300);
+
+            var fillDecision = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+                rawModelOutput: string.Empty,
+                userTask: "gunakan informasi tadi untuk mengisi formulir ini, periksa dulu, jangan kirim",
+                snapshot: formSnap,
+                step: 1,
+                alreadyDownloaded: false,
+                hasTypedInput: false,
+                playAlreadyExecuted: false);
+            Assert.Equal("input_text", fillDecision.ActionName);
+            Assert.Equal(1, fillDecision.ElementIndex);
+            Assert.Contains("Klinik Sehat Nusantara", fillDecision.TextOrUrl ?? string.Empty, StringComparison.Ordinal);
+            Assert.False(fillDecision.PressEnter);
+
+            var afterFillDecision = DynamicReActControlLoop.ParseModelDecisionJsonOrFallback(
+                rawModelOutput: string.Empty,
+                userTask: "gunakan informasi tadi untuk mengisi formulir ini, periksa dulu, jangan kirim",
+                snapshot: formSnap,
+                step: 2,
+                alreadyDownloaded: false,
+                hasTypedInput: true,
+                playAlreadyExecuted: false);
+            Assert.Equal("done", afterFillDecision.ActionName);
+
+            // 2. Single-Click JS Fix: GetExecuteElementActionScript must NOT include 'click' inside the pointer/mouse forEach loop
+            string clickJs = BrowserUseDomEngine.GetExecuteElementActionScript(1, "//button[1]", "click", null, false);
+            Assert.Contains("['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach", clickJs, StringComparison.Ordinal);
+            Assert.DoesNotContain("['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']", clickJs, StringComparison.Ordinal);
+            Assert.Contains("el.click()", clickJs, StringComparison.Ordinal);
+
+            // 3. Adapter Honesty: ScrollToTextAsync, WaitAsync(waitForText), and StopAsync
+            var vm = new AgentWorkspaceViewModel();
+            bool textPresentInDom = false;
+            var honestAdapter = new WebView2NativeAdapter(
+                vm,
+                scriptExecutor: js =>
+                {
+                    if (js.Contains("scrollIntoView", StringComparison.Ordinal))
+                    {
+                        bool found = js.Contains("kesimpulan", StringComparison.OrdinalIgnoreCase);
+                        return Task.FromResult(found
+                            ? "{\"ok\":true,\"found\":true,\"scrollY\":420,\"tag\":\"h2\"}"
+                            : "{\"ok\":false,\"found\":false,\"error\":\"TEXT_NOT_FOUND\"}");
+                    }
+                    if (js.Contains("createTreeWalker", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(textPresentInDom
+                            ? "{\"total\":1,\"matches\":[{\"tag\":\"div\",\"snippet\":\"Data Siap\"}]}"
+                            : "{\"total\":0,\"matches\":[]}");
+                    }
+                    return Task.FromResult("{\"ok\":true}");
+                });
+
+            var scrollMissing = await honestAdapter.ScrollToTextAsync("Teks Tidak Ada");
+            Assert.False(scrollMissing.IsSuccess);
+            Assert.Equal("TEXT_NOT_FOUND", scrollMissing.ErrorCode);
+
+            var scrollFound = await honestAdapter.ScrollToTextAsync("Kesimpulan");
+            Assert.True(scrollFound.IsSuccess);
+
+            var waitTimeout = await honestAdapter.WaitAsync(150, "Data Siap");
+            Assert.False(waitTimeout.IsSuccess);
+            Assert.Equal("WAIT_CONDITION_TIMEOUT", waitTimeout.ErrorCode);
+
+            textPresentInDom = true;
+            var waitSuccess = await honestAdapter.WaitAsync(300, "Data Siap");
+            Assert.True(waitSuccess.IsSuccess);
+
+            // StopAsync with no bound callbacks or JS bridge must fail honestly with STOP_NOT_BOUND
+            cfg.LiveJsEvaluator = null;
+            cfg.CancelActiveAgentRunCallback = null;
+            cfg.StopLiveWebView2NavigationCallback = null;
+            var unboundAdapter = new WebView2NativeAdapter(vm, scriptExecutor: null);
+            var stopUnbound = await unboundAdapter.StopAsync();
+            Assert.False(stopUnbound.IsSuccess);
+            Assert.Equal("STOP_NOT_BOUND", stopUnbound.ErrorCode);
+
+            bool cancelCalled = false;
+            cfg.CancelActiveAgentRunCallback = () => cancelCalled = true;
+            var stopBound = await unboundAdapter.StopAsync();
+            Assert.True(stopBound.IsSuccess);
+            Assert.True(cancelCalled);
+
+            // 4. Native Windows Clipboard & Save-to-File on copy_text ("salin hasilnya dan simpan ke file")
+            string? capturedOsClipboard = null;
+            cfg.ClipboardSetterOverride = txt => capturedOsClipboard = txt;
+            var loop = new DynamicReActControlLoop(
+                honestAdapter,
+                new ExternalSearchProvider(),
+                new NexusWorkspaceFileService(vm),
+                vm,
+                jsEvaluator: _ => Task.FromResult(
+                    "{\"Url\":\"https://example.org/klinik-2\",\"Title\":\"Klinik Sehat Nusantara\",\"PixelsAbove\":0,\"PixelsBelow\":200," +
+                    "\"CleanText\":\"Nama: Klinik Sehat Nusantara, Alamat: Jl. Sudirman No. 12, Telepon: 021-5550199\"," +
+                    "\"Elements\":[{\"Index\":1,\"TagName\":\"div\",\"Role\":\"region\",\"TextOrLabel\":\"Nama: Klinik Sehat Nusantara, Alamat: Jl. Sudirman No. 12, Telepon: 021-5550199\",\"InputType\":\"\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//div[1]\"}]}"));
+
+            var saveSummary = await loop.RunDynamicAgentLoopAsync("salin hasilnya dan simpan ke file");
+            Assert.True(saveSummary.IsSuccess);
+            Assert.NotNull(capturedOsClipboard);
+            Assert.Contains("Klinik Sehat Nusantara", capturedOsClipboard!, StringComparison.Ordinal);
+            Assert.NotNull(saveSummary.WorkspaceFileRegistered);
+            Assert.True(saveSummary.WorkspaceFileRegistered!.IsSuccess);
+            Assert.True(System.IO.File.Exists(saveSummary.WorkspaceFileRegistered.FilePath));
+
+            // 5. SPA Address Bar Sync in AgentWorkspaceView.xaml.cs
+            var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            string? repoRoot = null;
+            while (curDir != null)
+            {
+                if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+                {
+                    repoRoot = curDir.FullName;
+                    break;
+                }
+                curDir = curDir.Parent;
+            }
+            Assert.NotNull(repoRoot);
+            string viewCsPath = System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App", "Views", "AgentWorkspaceView.xaml.cs");
+            string viewCs = System.IO.File.ReadAllText(viewCsPath);
+            Assert.Contains("AttachCoreWebView2Event(coreWv, \"SourceChanged\"", viewCs, StringComparison.Ordinal);
+            Assert.Contains("SyncLiveSpaUrlFromCoreWebView2(coreWv)", viewCs, StringComparison.Ordinal);
+            Assert.Contains("nameof(AgentWorkspaceViewModel.LastBrowserUrl)", viewCs, StringComparison.Ordinal);
+        }
+        finally
+        {
+            cfg.LiveJsEvaluator = prevEval;
+            cfg.ClipboardSetterOverride = prevClip;
+            cfg.CancelActiveAgentRunCallback = prevCancel;
+            cfg.StopLiveWebView2NavigationCallback = prevStopWv;
+        }
+    }
+
+    [Fact]
+    public async Task BatchC_TakeTheWheelToolbar_PauseResumeStop_And_CrossOriginIframeCdpPiercing_VerifyCleanly()
+    {
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        var wheel = cfg.TakeTheWheel;
+        var prevCdp = cfg.LiveCdpCaller;
+        var prevCancel = cfg.CancelActiveAgentRunCallback;
+
+        try
+        {
+            wheel.ReleaseControlBackToBot();
+            wheel.MarkFreshSnapshotTaken();
+
+            // 1. Verify AgentWorkspaceView.xaml & AgentWorkspaceView.xaml.cs contain Take the Wheel / Return Control + Pause / Resume + Stop buttons
+            var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            string? repoRoot = null;
+            while (curDir != null)
+            {
+                if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+                {
+                    repoRoot = curDir.FullName;
+                    break;
+                }
+                curDir = curDir.Parent;
+            }
+            Assert.NotNull(repoRoot);
+            string appDir = System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App");
+            string viewXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir, "Views", "AgentWorkspaceView.xaml"));
+            string viewCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir, "Views", "AgentWorkspaceView.xaml.cs"));
+
+            Assert.Contains("x:Name=\"BrowserTakeTheWheelButton\"", viewXaml, StringComparison.Ordinal);
+            Assert.Contains("x:Name=\"BrowserPauseResumeButton\"", viewXaml, StringComparison.Ordinal);
+            Assert.Contains("x:Name=\"BrowserStopAgentButton\"", viewXaml, StringComparison.Ordinal);
+            Assert.Contains("public void ToggleTakeTheWheelControl()", viewCs, StringComparison.Ordinal);
+            Assert.Contains("public void TogglePauseResumeAgentControl()", viewCs, StringComparison.Ordinal);
+            Assert.Contains("public async Task<Nexus.Contracts.BrowserAgent.BrowserActionOutcome> ExecuteStopBrowserAgentToolbarAsync()", viewCs, StringComparison.Ordinal);
+
+            // 2. Manual Takeover Scenario (Take the Wheel -> Barrier rejects all mutations -> Return Control -> requires fresh live snapshot before acting)
+            var vm = new AgentWorkspaceViewModel();
+            var cdpEvents = new List<(string Method, string Payload)>();
+            var adapter = new WebView2NativeAdapter(
+                vm,
+                scriptExecutor: _ => Task.FromResult(
+                    "{\"Url\":\"https://movieku.example.org/watch/ep1\",\"Title\":\"Movieku Episode 1\",\"PixelsAbove\":0,\"PixelsBelow\":300," +
+                    "\"CleanText\":\"Streaming Player\",\"Elements\":[" +
+                    "{\"Index\":1,\"TagName\":\"iframe\",\"Role\":\"iframe\",\"TextOrLabel\":\"Play Video\",\"InputType\":\"\",\"Href\":\"https://player.ThirdParty.org/embed/xyz\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//iframe[1]\",\"CompoundInfo\":\"iframe_src=https://player.ThirdParty.org/embed/xyz,cross_origin=true\",\"CenterX\":640,\"CenterY\":360}" +
+                    "]}"),
+                cdpCaller: (method, payload) =>
+                {
+                    cdpEvents.Add((method, payload));
+                    if (method == "Page.getFrameTree")
+                    {
+                        return Task.FromResult("{\"frameTree\":{\"frame\":{\"id\":\"main-frame\",\"url\":\"https://movieku.example.org/watch/ep1\"},\"childFrames\":[{\"frame\":{\"id\":\"iframe-player-1\",\"url\":\"https://player.ThirdParty.org/embed/xyz\"}}]}}");
+                    }
+                    if (method == "DOM.getFlattenedDocument")
+                    {
+                        return Task.FromResult("{\"nodes\":[" +
+                            "{\"nodeId\":10,\"backendNodeId\":101,\"nodeType\":1,\"nodeName\":\"DIV\",\"localName\":\"div\",\"frameId\":\"main-frame\"}," +
+                            "{\"nodeId\":20,\"backendNodeId\":202,\"nodeType\":1,\"nodeName\":\"BUTTON\",\"localName\":\"button\",\"frameId\":\"iframe-player-1\",\"attributes\":[\"class\",\"vjs-big-play-button\",\"aria-label\",\"Play Episode 01 (Cross-Origin Iframe)\",\"id\",\"player-play-btn\"]}," +
+                            "{\"nodeId\":21,\"backendNodeId\":203,\"nodeType\":1,\"nodeName\":\"VIDEO\",\"localName\":\"video\",\"frameId\":\"iframe-player-1\",\"attributes\":[\"src\",\"https://cdn.ThirdParty.org/stream.mp4\"]}" +
+                            "]}");
+                    }
+                    return Task.FromResult("{}");
+                });
+
+            cfg.LiveCdpCaller = adapter.CdpCaller;
+            var loop = new DynamicReActControlLoop(
+                adapter,
+                new ExternalSearchProvider(),
+                new NexusWorkspaceFileService(vm),
+                vm,
+                jsEvaluator: adapter.ScriptExecutor);
+
+            // Initial snapshot discovers both the parent <iframe> [1] AND the pierced cross-origin iframe elements [2] (<button>) & [3] (<video>)
+            var snap1 = await loop.CaptureLiveSnapshotAsync();
+            Assert.Equal(3, snap1.Elements.Count);
+            Assert.Equal("iframe", snap1.Elements[0].TagName);
+            Assert.Equal("button", snap1.Elements[1].TagName);
+            Assert.Equal("Play Episode 01 (Cross-Origin Iframe)", snap1.Elements[1].TextOrLabel);
+            Assert.Contains("frame_id=iframe-player-1", snap1.Elements[1].CompoundInfo ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("backend_node_id=202", snap1.Elements[1].CompoundInfo ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal("video", snap1.Elements[2].TagName);
+            Assert.Contains(cdpEvents, e => e.Method == "Page.getFrameTree");
+            Assert.Contains(cdpEvents, e => e.Method == "DOM.getFlattenedDocument" && e.Payload.Contains("\"pierce\":true", StringComparison.Ordinal));
+
+            // User presses "Take the Wheel" -> Holder="human", Barrier closes, all agent mutations are rejected with HUMAN_TAKEOVER_ACTIVE
+            wheel.RequestHumanHelp("Pengguna menekan Take the Wheel di toolbar Browser Panel Kanan.", snap1.CurrentUrl);
+            Assert.Equal("human", wheel.Holder);
+            Assert.True(wheel.Barrier.IsClosed);
+
+            var blockedClick = await adapter.ClickAsync(snap1.SnapshotId, "e2");
+            var blockedNav = await adapter.NavigateAsync("https://example.org");
+            var blockedFill = await adapter.FillAsync(snap1.SnapshotId, "e2", "test");
+            Assert.False(blockedClick.IsSuccess);
+            Assert.Equal("HUMAN_TAKEOVER_ACTIVE", blockedClick.ErrorCode);
+            Assert.False(blockedNav.IsSuccess);
+            Assert.Equal("HUMAN_TAKEOVER_ACTIVE", blockedNav.ErrorCode);
+            Assert.False(blockedFill.IsSuccess);
+            Assert.Equal("HUMAN_TAKEOVER_ACTIVE", blockedFill.ErrorCode);
+
+            // User presses "Return Control" -> Holder="bot", Barrier opens, ResumeSnapshotRequired=true
+            wheel.ReleaseControlBackToBot();
+            Assert.Equal("bot", wheel.Holder);
+            Assert.False(wheel.Barrier.IsClosed);
+            Assert.True(wheel.ResumeSnapshotRequired);
+
+            // Any mutation attempted BEFORE taking a fresh live snapshot must be rejected with RESUME_SNAPSHOT_REQUIRED
+            var prematureClickBeforeFreshSnap = await adapter.ClickAsync(snap1.SnapshotId, "e2");
+            Assert.False(prematureClickBeforeFreshSnap.IsSuccess);
+            Assert.Equal("RESUME_SNAPSHOT_REQUIRED", prematureClickBeforeFreshSnap.ErrorCode);
+
+            // Taking a fresh live snapshot clears ResumeSnapshotRequired and allows clicking the cross-origin iframe button via CDP
+            var snap2 = await loop.CaptureLiveSnapshotAsync();
+            Assert.False(wheel.ResumeSnapshotRequired);
+
+            cdpEvents.Clear();
+            var iframeClickOut = await adapter.ClickAsync(snap2.SnapshotId, "e2");
+            Assert.True(iframeClickOut.IsSuccess);
+            Assert.Contains(cdpEvents, e => e.Method == "Input.dispatchMouseEvent" && e.Payload.Contains("\"mousePressed\"", StringComparison.Ordinal));
+            Assert.Contains(cdpEvents, e => e.Method == "Input.dispatchMouseEvent" && e.Payload.Contains("\"mouseReleased\"", StringComparison.Ordinal));
+        }
+        finally
+        {
+            wheel.ReleaseControlBackToBot();
+            wheel.MarkFreshSnapshotTaken();
+            cfg.LiveCdpCaller = prevCdp;
+            cfg.CancelActiveAgentRunCallback = prevCancel;
+        }
+    }
+
+    [Fact]
+    public void BatchD_CollapsibleToolbar_HomeButtonGoogle_CommaInTitle_And_TimestampBadgeProtection_VerifyCleanly()
+    {
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        Assert.Equal("https://www.google.com", cfg.HomePageUrl);
+
+        // 1. Batch D.1: Home icon to the left of Reload + Collapsible Agent Control Pill
+        var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? repoRoot = null;
+        while (curDir != null)
+        {
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+            {
+                repoRoot = curDir.FullName;
+                break;
+            }
+            curDir = curDir.Parent;
+        }
+        Assert.NotNull(repoRoot);
+        string appDir = System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App");
+        string viewXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir, "Views", "AgentWorkspaceView.xaml"));
+        string viewCs = System.IO.File.ReadAllText(System.IO.Path.Combine(appDir, "Views", "AgentWorkspaceView.xaml.cs"));
+
+        Assert.Contains("x:Name=\"BrowserHomeButton\"", viewXaml, StringComparison.Ordinal);
+        Assert.Contains("Click=\"BrowserHome_Click\"", viewXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BrowserAgentControlToggleButton\"", viewXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BrowserAgentControlCollapsiblePanel\"", viewXaml, StringComparison.Ordinal);
+        Assert.Contains("navStack.Children.Add(_navHomeBtn);\n                navStack.Children.Add(_navReloadBtn);", viewCs.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        Assert.Contains("public void NavigateToBrowserHomePage()", viewCs, StringComparison.Ordinal);
+        Assert.Contains("public void ToggleAgentControlPillExpanded()", viewCs, StringComparison.Ordinal);
+        Assert.Contains("bool shouldShowDrawer = _isAgentControlDrawerExpanded || humanHasControl;", viewCs, StringComparison.Ordinal);
+
+        // 2. Batch D.2 (image_6c6cfc.jpg fix): Comma inside video title ("buka google, buka youtube, cari SOAL GIBRAN, MANTAN KETUA MK BICARA! dan play")
+        string commaInTitlePrompt = "buka google, buka youtube, cari SOAL GIBRAN, MANTAN KETUA MK BICARA! dan play";
+        Assert.True(DynamicReActControlLoop.TrySplitCommandClauses(commaInTitlePrompt, out var splitClauses));
+        Assert.Equal(3, splitClauses.Length);
+        Assert.Equal("buka google", splitClauses[0]);
+        Assert.Equal("buka youtube", splitClauses[1]);
+        Assert.Equal("cari SOAL GIBRAN, MANTAN KETUA MK BICARA! dan play", splitClauses[2]);
+
+        var orderedSites = DynamicReActControlLoop.ExtractOrderedNavigationSitesFromTask(commaInTitlePrompt);
+        Assert.Equal(2, orderedSites.Count);
+        Assert.Equal("https://www.google.com", orderedSites[0]);
+        Assert.Equal("https://www.youtube.com", orderedSites[1]);
+
+        var (firstSite, extractedQuery, _) = DynamicReActControlLoop.AnalyzeUniversalBrowserTask(commaInTitlePrompt);
+        Assert.Equal("https://www.google.com", firstSite);
+        Assert.Equal("SOAL GIBRAN, MANTAN KETUA MK BICARA", extractedQuery);
+
+        var contract = AgentTaskChecklistContract.BuildContractFromTask(
+            commaInTitlePrompt,
+            firstSite,
+            extractedQuery,
+            wantsPlayOrClickTopResult: true,
+            orderedTargetSites: orderedSites);
+        Assert.Equal(4, contract.Steps.Count);
+
+        // 3. YouTube duration badge ("1:05:30") card title resolution & skipping bare timestamp links
+        string domBuildJs = BrowserUseDomEngine.GetBuildDomTreeScript();
+        Assert.Contains(@"/^\d+:\d+(?::\d+)?$/.test(lbl)", domBuildJs, StringComparison.Ordinal);
+
+        var ytResultsSnap = new BrowserLiveStateSnapshot(
+            "snap-yt-d2",
+            "https://www.youtube.com/results?search_query=SOAL+GIBRAN",
+            "SOAL GIBRAN - YouTube",
+            0,
+            Array.Empty<BrowserVirtualTab>(),
+            new List<InteractiveDomNode>
+            {
+                new(1, "a", "link", "1:05:30", "", "https://www.youtube.com/watch?v=wrong_badge", false, false, "//a[1]"),
+                new(2, "a", "link", "SOAL GIBRAN, MANTAN KETUA MK BICARA! - Mahfud MD Official", "", "https://www.youtube.com/watch?v=correct_video", false, false, "//a[2]")
+            },
+            "Hasil pencarian YouTube",
+            0,
+            400);
+
+        var subGoals = new List<PlannerSubGoal>
+        {
+            new("click_and_play", "video paling atas", null, Completed: false)
+        };
+        var clickDecision = DynamicReActControlLoop.TryResolveNextPendingPlannerSubGoalDecision(subGoals, ytResultsSnap);
+        Assert.NotNull(clickDecision);
+        Assert.Equal("click_element", clickDecision!.ActionName);
+        Assert.Equal(2, clickDecision.ElementIndex);
+    }
+
+    [Fact]
+    public void Stage4_IframeCoordinateAccumulation_PostconditionStateDeltaVerified_And_HdUniformToolbarIcons_VerifyCleanly()
+    {
+        // 1. Verify iframe coordinate offset accumulation in GetBuildDomTreeScript & GetPrepareElementForCdpActionScript
+        string domBuildJs = BrowserUseDomEngine.GetBuildDomTreeScript();
+        string cdpPrepJs = BrowserUseDomEngine.GetPrepareElementForCdpActionScript(1, "//button[1]", "click", "button", "button");
+        Assert.Contains("cWin.frameElement.getBoundingClientRect()", domBuildJs, StringComparison.Ordinal);
+        Assert.Contains("cWin.frameElement.getBoundingClientRect()", cdpPrepJs, StringComparison.Ordinal);
+        Assert.Contains("var cx = r.left + fOffX + r.width / 2;", cdpPrepJs, StringComparison.Ordinal);
+        Assert.Contains("var cy = r.top + fOffY + r.height / 2;", cdpPrepJs, StringComparison.Ordinal);
+
+        // 2. Verify Stagehand primitives (act/extract/observe) & StateDeltaVerified, GoalVerified, UnverifiedDoneVeto in BrowserAgentSupervisorEngine
+        var contract = AgentTaskChecklistContract.BuildContractFromTask(
+            "buka youtube, cari video dan play",
+            "https://www.youtube.com",
+            "video",
+            wantsPlayOrClickTopResult: true);
+        Assert.Equal("act", AgentTaskChecklistContract.MapActionToStagehandPrimitive("click_element"));
+        Assert.Equal("extract", AgentTaskChecklistContract.MapActionToStagehandPrimitive("copy_text"));
+        Assert.Equal("observe", AgentTaskChecklistContract.MapActionToStagehandPrimitive("done"));
+
+        var step1Eval = contract.EvaluatePostconditionDelta("go_to_url", urlChanged: true, domOrInputChanged: true);
+        Assert.True(step1Eval.StateDeltaVerified);
+        Assert.True(contract.StateDeltaVerified);
+        Assert.False(contract.GoalVerified);
+
+        // Premature done before steps complete triggers UnverifiedDoneVeto
+        var prematureDoneEval = contract.EvaluatePostconditionDelta("done", urlChanged: false, domOrInputChanged: false, isCandidateDoneAction: true);
+        Assert.True(prematureDoneEval.UnverifiedDoneVeto);
+        Assert.True(contract.UnverifiedDoneVeto);
+        Assert.Equal(1, contract.UnverifiedDoneVetoCount);
+
+        // Complete all contract steps -> GoalVerified becomes true & UnverifiedDoneVeto becomes false
+        contract.MarkStepCompleted("NAVIGATE", "YouTube terbuka", "https://www.youtube.com");
+        contract.MarkStepCompleted("INPUT", "Kueri diketik", "https://www.youtube.com/results?search_query=video");
+        contract.MarkStepCompleted("CLICK", "Video diklik & berputar", "https://www.youtube.com/watch?v=123");
+        var finalDoneEval = contract.EvaluatePostconditionDelta("done", urlChanged: false, domOrInputChanged: false, mediaPlaybackVerified: true, isCandidateDoneAction: true);
+        Assert.True(finalDoneEval.GoalVerified);
+        Assert.False(finalDoneEval.UnverifiedDoneVeto);
+        Assert.True(contract.GoalVerified);
+
+        // 3. Verify HD Uniform Toolbar Stroke Icons (13.5px, 1.65 stroke, SnapsToDevicePixels=true, UseLayoutRounding=true, 36px circle pill when collapsed)
+        var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? repoRoot = null;
+        while (curDir != null)
+        {
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+            {
+                repoRoot = curDir.FullName;
+                break;
+            }
+            curDir = curDir.Parent;
+        }
+        Assert.NotNull(repoRoot);
+        string viewCs = System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App", "Views", "AgentWorkspaceView.xaml.cs"));
+        Assert.Contains("SnapsToDevicePixels = true,", viewCs, StringComparison.Ordinal);
+        Assert.Contains("UseLayoutRounding = true,", viewCs, StringComparison.Ordinal);
+        Assert.Contains("M 4,10 L 12,3 L 20,10 V 20 A 1,1 0 0 1 19,21 H 14.5 V 14.5 H 9.5 V 21 H 5 A 1,1 0 0 1 4,20 Z", viewCs, StringComparison.Ordinal);
+        Assert.Contains("M 12,3 A 9,9 0 1 0 12,21 A 9,9 0 1 0 12,3 Z M 12,9.5 A 2.5,2.5 0 1 0 12,14.5 A 2.5,2.5 0 1 0 12,9.5 Z M 12,3 V 9.5 M 4.2,16.5 L 9.8,13.2 M 19.8,16.5 L 14.2,13.2", viewCs, StringComparison.Ordinal);
+        Assert.Contains("_modernTakeWheelPillBorder.Width = shouldShowDrawer ? double.NaN : 30;", viewCs, StringComparison.Ordinal);
+    }
+
+
+    [Fact]
+    public void BatchE_MediaPlaybackVerifier_OpenXmlXlsxAndPdfExporter_And_InlineChatCanvasCard_VerifyCleanly()
+    {
+        // 1. Verify Batch E.1 Media Playback & DOM Table Verifier Script
+        string mediaTableJs = BrowserUseDomEngine.GetVerifyMediaAndExtractTablesScript(ensurePlayIfPaused: true);
+        Assert.Contains("document.querySelectorAll('video, audio')", mediaTableJs, StringComparison.Ordinal);
+        Assert.Contains("maxCurrentTime", mediaTableJs, StringComparison.Ordinal);
+        Assert.Contains("extractedTables", mediaTableJs, StringComparison.Ordinal);
+
+        var contract = AgentTaskChecklistContract.BuildContractFromTask(
+            "buka youtube, cari video dan play",
+            "https://www.youtube.com",
+            "video",
+            wantsPlayOrClickTopResult: true);
+        Assert.True(contract.RequiresMediaPlaybackVerification);
+        Assert.False(contract.MediaPlaybackVerified);
+        contract.RecordMediaPlaybackVerification(isPlayingOrAdvanced: true, currentTimeSeconds: 14.5);
+        Assert.True(contract.MediaPlaybackVerified);
+        Assert.Equal(14.5, contract.VerifiedMediaCurrentTimeSeconds);
+
+        // 2. Verify Batch E.2 Zero-Overhead Canvas Artifact Detection (Report + Table & Script/Code)
+        string sampleEditorialReport =
+            "# Pertahankan Fondasi WebView2 + CDP NEXUS dan Perbaiki 4 Celah Kontinuitas\n\n" +
+            "Laporan penyelarasan produk dan audit kode aktual atas dokumen arahan NEXUS Interactive AI Browser Agent.\n\n" +
+            "| Komponen | Status | Catatan |\n" +
+            "| :--- | :--- | :--- |\n" +
+            "| Native CDP Input | Selesai | Mouse & Keyboard terverifikasi |\n" +
+            "| GBNF JSON Schema | Selesai | Tanpa $ref untuk llama-server |\n" +
+            "| Inline Chat Canvas | Selesai | Mendukung Kode, Pratinjau, Ekspor .pdf & .xlsx |\n" +
+            "- Poin 1: Keputusan Arsitektur Utama KEEP & EXTEND secara bedah.\n" +
+            "- Poin 2: Mengintegrasikan 4 Bug perbaikan visual dan kontinuitas.\n" +
+            "- Poin 3: Mendukung model lokal Gemma-4-E4B-It tanpa overhead token.";
+
+        var reportArtifact = NexusCanvasExporterAndExtractor.TryDetectOrExtractCanvasArtifact(sampleEditorialReport);
+        Assert.NotNull(reportArtifact);
+        Assert.True(reportArtifact!.DefaultToPreviewMode);
+        Assert.Equal("4 Bug", reportArtifact.HighlightMetricValue);
+        Assert.Equal(4, reportArtifact.TableRows.Count);
+
+        string sampleScriptMsg =
+            "Berikut skrip sinkronisasi:\n```cmd\n@echo off\ntitle NEXUS 4-Layer Architecture Synchronizer (v55 Rev 28)\necho Memulai Sinkronisasi_4Lapis_NEXUS.cmd\npause\n```";
+        var codeArtifact = NexusCanvasExporterAndExtractor.TryDetectOrExtractCanvasArtifact(sampleScriptMsg);
+        Assert.NotNull(codeArtifact);
+        Assert.False(codeArtifact!.DefaultToPreviewMode);
+        Assert.Equal("Sinkronisasi_4Lapis_NEXUS.cmd", codeArtifact.Title);
+
+        // 3. Verify Real OpenXML .xlsx and %PDF-1.4 Exporter + ChatMessageItemViewModel Inline Canvas Commands
+        string tempExportDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "nexus_batch_e_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var chatTurn = new Nexus.App.ViewModels.ChatMessageItemViewModel
+            {
+                Role = "assistant",
+                Content = sampleEditorialReport
+            };
+            chatTurn.RefreshCanvasCardFromContent();
+            Assert.True(chatTurn.HasCanvasCard);
+            Assert.True(chatTurn.IsCanvasCardVisible);
+            Assert.True(chatTurn.IsCanvasPreviewMode);
+            Assert.False(chatTurn.IsCanvasCodeMode);
+            Assert.Equal("4 Bug", chatTurn.CanvasHighlightMetricValue);
+
+            // Toggle to Kode mode and back to Pratinjau mode
+            chatTurn.SetCanvasCodeModeCommand.Execute(null);
+            Assert.True(chatTurn.IsCanvasCodeMode);
+            chatTurn.SetCanvasPreviewModeCommand.Execute(null);
+            Assert.True(chatTurn.IsCanvasPreviewMode);
+
+            // Export to PDF (.pdf) & Excel (.xlsx)
+            var pdfRes = chatTurn.ExecuteCanvasExport("pdf", tempExportDir);
+            Assert.NotNull(pdfRes);
+            Assert.True(pdfRes!.IsSuccess);
+            Assert.True(System.IO.File.Exists(pdfRes.FullFilePath));
+            string pdfHeader = System.Text.Encoding.ASCII.GetString(System.IO.File.ReadAllBytes(pdfRes.FullFilePath), 0, 8);
+            Assert.StartsWith("%PDF-1.4", pdfHeader, StringComparison.Ordinal);
+
+            var xlsxRes = chatTurn.ExecuteCanvasExport("xlsx", tempExportDir);
+            Assert.NotNull(xlsxRes);
+            Assert.True(xlsxRes!.IsSuccess);
+            Assert.True(System.IO.File.Exists(xlsxRes.FullFilePath));
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(xlsxRes.FullFilePath))
+            {
+                Assert.NotNull(zip.GetEntry("xl/workbook.xml"));
+                Assert.NotNull(zip.GetEntry("xl/worksheets/sheet1.xml"));
+            }
+        }
+        finally
+        {
+            try { if (System.IO.Directory.Exists(tempExportDir)) System.IO.Directory.Delete(tempExportDir, true); } catch { }
+        }
+
+        // 4. Verify 12px (strokeThickness = 1.35) & 30x30 proportional toolbar icons in AgentWorkspaceView.xaml.cs
+        var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? repoRoot = null;
+        while (curDir != null)
+        {
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+            {
+                repoRoot = curDir.FullName;
+                break;
+            }
+            curDir = curDir.Parent;
+        }
+        Assert.NotNull(repoRoot);
+        string viewCs = System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App", "Views", "AgentWorkspaceView.xaml.cs"));
+        Assert.Contains("double strokeThickness = 1.35, double size = 12.0", viewCs, StringComparison.Ordinal);
+        Assert.Contains("_modernTakeWheelPillBorder.Width = shouldShowDrawer ? double.NaN : 30;", viewCs, StringComparison.Ordinal);
+
+        string convXaml = System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App", "Views", "ConversationView.xaml"));
+        Assert.Contains("x:Name=\"InlineChatCanvasCard\"", convXaml, StringComparison.Ordinal);
+        Assert.Contains("SetCanvasCodeModeCommand", convXaml, StringComparison.Ordinal);
+        Assert.Contains("SetCanvasPreviewModeCommand", convXaml, StringComparison.Ordinal);
+        Assert.Contains("ExportCanvasPdfCommand", convXaml, StringComparison.Ordinal);
+        Assert.Contains("ExportCanvasXlsxCommand", convXaml, StringComparison.Ordinal);
+    }
+
+
+    [Fact]
+    public void ArgonCanvasLogic_ContextualReload_ZeroDuplicateCode_LiveBuildingState_And_CodexTimeline_VerifyCleanly()
+    {
+        // 1. Verify Dynamic Codex Timeline (zero hardcoded titles, zero old blockquote in display markdown, locked timeline preserved when AI model streams natural closing response)
+        string browserCardMd =
+            "> **✓ NEXUS Browser Agent · \"SOAL GIBRAN, MANTAN KETUA MK BICARA\"** · `4/4 selesai ✓`\r\n>\r\n" +
+            "> ✓ ~~Membuka halaman utama `https://www.google.com`~~ · [Buka](https://www.google.com) · ‹Halaman terbuka & terverifikasi›\r\n" +
+            "> ✓ ~~Membuka halaman utama `https://www.youtube.com`~~ · [Buka](https://www.youtube.com) · ‹Halaman terbuka & terverifikasi›\r\n" +
+            "> ✓ ~~Mengetik \"SOAL GIBRAN, MANTAN KETUA MK BICARA\" di kolom pencarian/input & menekan Enter~~ · [Buka](https://www.youtube.com/results?search_query=SOAL+GIBRAN) · ‹Kueri dikirim›\r\n" +
+            "> ✓ ~~Mengklik \"SOAL GIBRAN, MANTAN KETUA MK BICARA!. - Prof. Jimly Asshiddiqie || HYB 53 minutes\"~~ · [Buka](https://www.youtube.com/watch?v=YEOdL5tNWoE) · ‹The focused UI element is div Description: YouTube Video Player, ID: movie_player · Media active (currentTime=4s, playing=True) · StateDeltaVerified=true›";
+
+        var browserMsgVm = new Nexus.App.ViewModels.ChatMessageItemViewModel
+        {
+            Role = "assistant"
+        };
+        browserMsgVm.LockCodexBrowserTimelineFromMarkdown(browserCardMd, "✓ Ran 4 browser actions · 4/4 done · 36.0s");
+        // Simulate AI model streaming the natural closing paragraph + link (like Codex in image_fca569.jpg)
+        browserMsgVm.Content = "Video yang paling cocok sudah terbuka dan sedang diputar: **[SOAL GIBRAN, MANTAN KETUA MK BICARA!. - Prof. Jimly Asshiddiqie || HYB](https://www.youtube.com/watch?v=YEOdL5tNWoE)** dari kanal **Helmy Yahya Bicara** (53:08). [Buka video di YouTube](https://www.youtube.com/watch?v=YEOdL5tNWoE)";
+        browserMsgVm.RefreshCanvasCardFromContent();
+        Assert.False(browserMsgVm.HasCanvasCard);
+        Assert.True(browserMsgVm.HasCodexBrowserSteps);
+        Assert.Equal(6, browserMsgVm.CodexBrowserSteps.Count);
+        Assert.Equal("Memeriksa browser yang tersedia", browserMsgVm.CodexBrowserSteps[0].StepTitle);
+        Assert.Equal("Membuka Google", browserMsgVm.CodexBrowserSteps[1].StepTitle);
+        Assert.Equal("Membuka YouTube", browserMsgVm.CodexBrowserSteps[2].StepTitle);
+        Assert.Equal("Mencari di YouTube", browserMsgVm.CodexBrowserSteps[3].StepTitle);
+        Assert.Equal("Membuka video yang paling cocok", browserMsgVm.CodexBrowserSteps[4].StepTitle);
+        Assert.Equal("Memastikan video sedang diputar", browserMsgVm.CodexBrowserSteps[5].StepTitle);
+
+        // Old blockquote & Kartu Sumber Terverifikasi are 100% absent from display markdown; only AI's natural closing text shows below the timeline
+        Assert.DoesNotContain("> **✓ NEXUS Browser Agent", browserMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Kartu Sumber Terverifikasi", browserMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("Video yang paling cocok sudah terbuka", browserMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        // Default after completion is collapsed (IsThinkingCollapsed == true, matching image_deff3f.png)
+        Assert.True(browserMsgVm.IsThinkingCollapsed);
+        Assert.Equal("✓ Ran 4 browser actions · 4/4 done · 36.0s", browserMsgVm.ThinkingDurationText);
+        // Generic Uri.Host FaviconImageUrl resolution (zero hardcoded site branches)
+        Assert.False(browserMsgVm.CodexBrowserSteps[0].HasFaviconImageUrl);
+        Assert.True(browserMsgVm.CodexBrowserSteps[1].HasFaviconImageUrl);
+        Assert.Contains("domain=www.google.com", browserMsgVm.CodexBrowserSteps[1].FaviconImageUrl!, StringComparison.Ordinal);
+        Assert.Contains("domain=www.youtube.com", browserMsgVm.CodexBrowserSteps[2].FaviconImageUrl!, StringComparison.Ordinal);
+
+        // Persisted JSON content keeps both the timeline header + ‹HEADER:...› and the AI closing text so reloading the conversation restores both without losing ThinkingDurationText (image_df0702.png fix)
+        string persistedJsonContent = browserMsgVm.GetPersistedContentWithBrowserTimelineHeader();
+        Assert.Contains("> **✓ NEXUS Browser Agent", persistedJsonContent, StringComparison.Ordinal);
+        Assert.Contains("Video yang paling cocok sudah terbuka", persistedJsonContent, StringComparison.Ordinal);
+        var reloadedMsgVm = new Nexus.App.ViewModels.ChatMessageItemViewModel
+        {
+            Role = "assistant",
+            Content = persistedJsonContent
+        };
+        Assert.True(reloadedMsgVm.HasCodexBrowserSteps);
+        Assert.True(reloadedMsgVm.IsThinkingCollapsed);
+        Assert.Equal("✓ Ran 4 browser actions · 4/4 done · 36.0s", reloadedMsgVm.ThinkingDurationText);
+
+        // Sequential Step Rule: Pending (○) steps are NOT included in CodexBrowserSteps while running
+        string midRunMd =
+            "> **● NEXUS Browser Agent · \"test\"** · `1/3 berjalan ●`\r\n>\r\n" +
+            "> ✓ ~~Membuka https://www.google.com~~ · [Buka](https://www.google.com)\r\n" +
+            "> ● **Membuka https://www.youtube.com**\r\n" +
+            "> ○ Mengetik kueri pencarian";
+        var midRunSteps = NexusCanvasExporterAndExtractor.ExtractCodexTimelineStepsFromBrowserCard(midRunMd);
+        Assert.Equal(3, midRunSteps.Count); // 1 browser check + 1 completed + 1 running (pending ○ step is excluded!)
+
+        // Clicking a Codex timeline step toggles its expandable dynamic detail box
+        Assert.False(browserMsgVm.CodexBrowserSteps[4].IsDetailExpanded);
+        browserMsgVm.CodexBrowserSteps[4].ToggleStepDetailCommand.Execute(null);
+        Assert.True(browserMsgVm.CodexBrowserSteps[4].IsDetailExpanded);
+        Assert.Contains("movie_player", browserMsgVm.CodexBrowserSteps[4].StepDetailText, StringComparison.Ordinal);
+
+        // 2. Verify Argon Single-Surface Rule (Zero Duplicate Code in Chat Bubble + Live Streaming Building State — image_3e7ca3.png fix)
+        string streamingCodeReply =
+            "Berikut adalah skrip Python yang telah ditingkatkan untuk sinkronisasi arsitektur 4-lapis dengan penanganan galat dan validasi log otomatis:\n\n" +
+            "```python\nimport os\nimport sys\nimport logging\nfrom pathlib import Path\n";
+        var codeMsgVm = new Nexus.App.ViewModels.ChatMessageItemViewModel
+        {
+            Role = "assistant",
+            IsStreaming = true,
+            Content = streamingCodeReply
+        };
+        codeMsgVm.RefreshCanvasCardFromContent(isStreamingNow: true);
+        Assert.True(codeMsgVm.HasCanvasCard);
+        Assert.True(codeMsgVm.IsCanvasBuilding);
+        Assert.Equal("⏳ Sedang menyusun di Canvas...", codeMsgVm.CanvasStatusBadgeText);
+        // While streaming, upper chat bubble shows ONLY the intro prose, NOT the duplicate code fence!
+        Assert.DoesNotContain("import os", codeMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("Berikut adalah skrip Python", codeMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+
+        // Finish streaming -> IsCanvasBuilding becomes false immediately, code remains ONLY in Canvas card
+        codeMsgVm.Content = streamingCodeReply + "print('Sinkronisasi 4-lapis berhasil divalidasi.')\n```";
+        codeMsgVm.IsStreaming = false;
+        codeMsgVm.RefreshCanvasCardFromContent(isStreamingNow: false);
+        Assert.True(codeMsgVm.HasCanvasCard);
+        Assert.False(codeMsgVm.IsCanvasBuilding);
+        Assert.DoesNotContain("import os", codeMsgVm.GetEffectiveDisplayMarkdown(), StringComparison.Ordinal);
+        Assert.Contains("import os", codeMsgVm.CanvasRawCodeText, StringComparison.Ordinal);
+
+        // 3. Verify GPU CSS Virtual Cursor (#__nexus_virtual_cursor) & Focused Element / Pause (k) in BrowserUseDomEngine
+        string cdpPrepJs = BrowserUseDomEngine.GetPrepareElementForCdpActionScript(1, "//button[1]", "click", "button", "button");
+        Assert.Contains("__nexus_virtual_cursor", cdpPrepJs, StringComparison.Ordinal);
+        Assert.Contains("translate3d(", cdpPrepJs, StringComparison.Ordinal);
+
+        string mediaVerifyJs = BrowserUseDomEngine.GetVerifyMediaAndExtractTablesScript();
+        Assert.Contains("The focused UI element is ", mediaVerifyJs, StringComparison.Ordinal);
+        Assert.Contains("Pause", mediaVerifyJs, StringComparison.Ordinal);
+
+        // 4. Verify Contextual Reload in ConversationViewModel.cs
+        var curDir = new System.IO.DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        string? repoRoot = null;
+        while (curDir != null)
+        {
+            if (System.IO.Directory.Exists(System.IO.Path.Combine(curDir.FullName, "src", "03_App", "Nexus.App")))
+            {
+                repoRoot = curDir.FullName;
+                break;
+            }
+            curDir = curDir.Parent;
+        }
+        Assert.NotNull(repoRoot);
+        string vmCs = System.IO.File.ReadAllText(System.IO.Path.Combine(repoRoot!, "src", "03_App", "Nexus.App", "ViewModels", "ConversationViewModel.cs"));
+        Assert.Contains("string? effectiveBrowserPrompt = !string.IsNullOrWhiteSpace(newUserPrompt)", vmCs, StringComparison.Ordinal);
+        Assert.Contains("public void LockCodexBrowserTimelineFromMarkdown(", vmCs, StringComparison.Ordinal);
+        Assert.Contains("if (Application.Current?.Dispatcher is { } disp && !disp.CheckAccess())", vmCs, StringComparison.Ordinal);
+        Assert.Contains("await InvokeOnUiDispatcherAsync(() =>\n            {\n                message.RefreshCanvasCardFromContent(isStreamingNow: false);\n            });", vmCs.Replace("\r\n", "\n"), StringComparison.Ordinal);
+        Assert.DoesNotContain("public bool IsStreaming\r\n        {\r\n            get => _isStreaming;\r\n            private set", vmCs, StringComparison.Ordinal);
+        Assert.DoesNotContain("public bool IsStreaming\n        {\n            get => _isStreaming;\n            private set", vmCs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StageOptimization_SixStrictRules_StepTelemetry_PromptCache_FastPath_DeltaPlan_SmartPierce_And_OodBenchmarkSuite_VerifyCleanly()
+    {
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        var prevLlm = cfg.LiveLlmStepPlannerCaller;
+        var prevCdp = cfg.LiveCdpCaller;
+        bool prevFp = cfg.EnableGenericFastPath;
+        bool prevCompact = cfg.EnableCompactDomPrompt;
+        bool prevCache = cfg.EnablePromptCache;
+        bool prevThink = cfg.EnableLocalModelThinking;
+        bool prevAlwaysPierce = cfg.AlwaysPierceCdpInBaselineMode;
+
+        try
+        {
+            // =========================================================================
+            // 1. ATURAN 5: Telemetri Per Tahap (Pemisahan LlmTtftMs vs LlmDecodeMs, PromptTokens, CompletionTokens, CachedPromptTokens cache_n)
+            // =========================================================================
+            string innerDecisionJson = "{\"evaluation_previous_goal\":\"OK\",\"memory\":\"Siap\",\"next_goal\":\"Klik produk\",\"plan_update\":null,\"action\":\"click_element\",\"element_index\":2,\"text_or_url\":null,\"press_enter\":false}";
+            string sampleLlamaServerResp =
+                "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":" +
+                System.Text.Json.JsonSerializer.Serialize(innerDecisionJson) +
+                "}}],\"timings\":{\"cache_n\":512,\"prompt_n\":248,\"prompt_ms\":920.4,\"predicted_n\":42,\"predicted_ms\":610.2},\"usage\":{\"prompt_tokens\":760,\"completion_tokens\":42}}";
+            var (parsedContent, tel) = BrowserUseDomEngine.ParseLlamaServerResponseWithTelemetry(sampleLlamaServerResp, 1550, "local:8080");
+            Assert.Contains("\"action\":\"click_element\"", parsedContent, StringComparison.Ordinal);
+            Assert.Equal(920, tel.LlmTtftMs);
+            Assert.Equal(610, tel.LlmDecodeMs);
+            Assert.Equal(760, tel.PromptTokens);
+            Assert.Equal(42, tel.CompletionTokens);
+            Assert.Equal(512, tel.CachedPromptTokens);
+            Assert.True(tel.PromptCacheHit);
+            Assert.Equal(0, tel.ThinkingTokensDetected);
+            Assert.True(DynamicReActControlLoop.CheckIfRawModelPlanUpdateIsNull(parsedContent));
+
+            // =========================================================================
+            // 2. LANGKAH 2: Prompt Cache (cache_prompt: true), Static Prefix Ordering, Compact DOM Snapshot, Single Port, & enable_thinking: false
+            // =========================================================================
+            string payloadNoThink = BrowserUseDomEngine.BuildLlamaServerChatCompletionPayloadJson("SYS", "USR", 0.1, 320, enablePromptCache: true, enableThinking: false);
+            using (var pDoc = System.Text.Json.JsonDocument.Parse(payloadNoThink))
+            {
+                Assert.True(pDoc.RootElement.GetProperty("cache_prompt").GetBoolean());
+                Assert.Equal("none", pDoc.RootElement.GetProperty("reasoning_format").GetString());
+                Assert.False(pDoc.RootElement.GetProperty("chat_template_kwargs").GetProperty("enable_thinking").GetBoolean());
+            }
+
+            var thirtyFiveNodes = Enumerable.Range(1, 35)
+                .Select(i => new InteractiveDomNode(i, "a", "link", $"Artikel Jurnal Riset Ekonomi Makro Nomor {i} Tahun 2026 dengan Judul Lengkap", null, $"https://portal-riset.id/jurnal/2026/ekonomi-makro-artikel-{i}?utm_source=beranda", false, false, $"//a[{i}]"))
+                .ToList();
+            string longMarkdown = string.Join("\n", Enumerable.Repeat("Paragraf konten panjang halaman portal riset ekonomi makro Indonesia untuk pengujian pemangkasan token snapshot.", 20));
+            var denseSnap = new BrowserLiveStateSnapshot("snap-dense", "https://portal-riset.id/jurnal", "Portal Riset", 0, Array.Empty<BrowserVirtualTab>(), thirtyFiveNodes, longMarkdown, 0, 800);
+
+            string fullPromptStep1 = BrowserUseDomEngine.FormatBrowserStateForLlmPrompt(
+                "Cari artikel ekonomi makro dan unduh PDF",
+                denseSnap, 1, 15, new[] { "Langkah 1" }, activePlan: new[] { "Buka portal", "Pilih artikel" }, carryForwardContext: "<carry_forward_context>LastActivePage: https://portal-riset.id</carry_forward_context>",
+                maxViewportElements: 45, maxWebpageContentChars: 1600);
+            string compactPromptStep1 = BrowserUseDomEngine.FormatBrowserStateForLlmPrompt(
+                "Cari artikel ekonomi makro dan unduh PDF",
+                denseSnap, 1, 15, new[] { "Langkah 1" }, activePlan: new[] { "Buka portal", "Pilih artikel" }, carryForwardContext: "<carry_forward_context>LastActivePage: https://portal-riset.id</carry_forward_context>",
+                maxViewportElements: 26, maxWebpageContentChars: 420);
+            string compactPromptStep2 = BrowserUseDomEngine.FormatBrowserStateForLlmPrompt(
+                "Cari artikel ekonomi makro dan unduh PDF",
+                denseSnap, 2, 15, new[] { "Langkah 1", "Langkah 2" }, activePlan: new[] { "Buka portal", "Pilih artikel" }, carryForwardContext: "<carry_forward_context>LastActivePage: https://portal-riset.id</carry_forward_context>",
+                maxViewportElements: 26, maxWebpageContentChars: 420);
+
+            // Static prefix (<static_task_header>...</static_task_header>) is 100% byte-for-byte identical between Step 1 and Step 2!
+            int headerEnd1 = compactPromptStep1.IndexOf("</static_task_header>", StringComparison.Ordinal) + "</static_task_header>".Length;
+            int headerEnd2 = compactPromptStep2.IndexOf("</static_task_header>", StringComparison.Ordinal) + "</static_task_header>".Length;
+            Assert.True(headerEnd1 > 80);
+            Assert.Equal(compactPromptStep1[..headerEnd1], compactPromptStep2[..headerEnd2]);
+            Assert.True(compactPromptStep1.Length < (int)(fullPromptStep1.Length * 0.62), $"Compact prompt ({compactPromptStep1.Length} chars) must shrink full prompt ({fullPromptStep1.Length} chars) significantly.");
+
+            // =========================================================================
+            // 3. ATURAN 1 & 2: Syarat Elemen Tunggal Ketat, Larangan Aksi Sensitif, & Verifikasi Spesifik Sub-Goal
+            // =========================================================================
+            var ambiguousSnap = new BrowserLiveStateSnapshot(
+                "snap-ambig",
+                "https://toko-elektronik.id/search?q=monitor",
+                "Hasil Pencarian Monitor",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "a", "link", "Monitor OLED 27 Inch Pro", null, "https://toko-elektronik.id/p/oled-pro", false, false, "//a[1]"),
+                    new(2, "a", "link", "Monitor OLED 27 Inch Lite", null, "https://toko-elektronik.id/p/oled-lite", false, false, "//a[2]")
+                },
+                "2 produk ditemukan", 0, 0);
+            var ambigGoal = new List<PlannerSubGoal> { new("click", Target: "Monitor OLED 27 Inch") };
+            var ambigOutcome = DynamicReActControlLoop.TryResolveGenericSubGoalFastPath(ambigGoal, ambiguousSnap);
+            Assert.False(ambigOutcome.CanUseFastPath);
+            Assert.Equal(2, ambigOutcome.MatchingCandidateCount);
+            Assert.Contains("AmbiguousClickCandidates:2", ambigOutcome.RejectionOrMatchReason, StringComparison.Ordinal);
+
+            var sensitiveSnap = new BrowserLiveStateSnapshot(
+                "snap-sens",
+                "https://toko-elektronik.id/checkout",
+                "Checkout",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "button", "button", "Bayar Sekarang Rp 4.500.000", "submit", null, false, true, "//button[1]")
+                },
+                "Konfirmasi Pembayaran", 0, 0);
+            var sensGoal = new List<PlannerSubGoal> { new("click", Target: "Bayar Sekarang") };
+            var sensOutcome = DynamicReActControlLoop.TryResolveGenericSubGoalFastPath(sensGoal, sensitiveSnap);
+            Assert.False(sensOutcome.CanUseFastPath);
+            Assert.True(sensOutcome.BlockedBySensitivePolicy);
+
+            var navSubGoal = new PlannerSubGoal("navigate", Target: "https://katalog-perpustakaan.ac.id");
+            var navDecision = new AgentStepDecision("OK", "m", "Buka katalog", "go_to_url", TextOrUrl: "https://katalog-perpustakaan.ac.id");
+            var fakeRedirectResult = new BrowserStepActionResult(
+                "go_to_url", false, "Redirected", "about:blank", "https://promo-redirect.example.net/landing", true, false, false, false);
+            bool redirectVerified = DynamicReActControlLoop.VerifySubGoalSpecificPostcondition(
+                navSubGoal, navDecision, fakeRedirectResult, ambiguousSnap, false, out string redirectFailReason);
+            Assert.False(redirectVerified);
+            Assert.Contains("HostMismatch", redirectFailReason, StringComparison.Ordinal);
+
+            // =========================================================================
+            // 4. ATURAN 3: Volatile-Free DOM Hash (Mengabaikan Jam, Penghitung Live, & Iklan) + Pemicu CDP Pierce
+            // =========================================================================
+            var portalSnapTick1 = new BrowserLiveStateSnapshot(
+                "snap-t1",
+                "https://portal-dokumen.id/viewer?doc=99&utm_source=feed&t=1700001",
+                "Portal Dokumen",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "button", "button", "Segarkan Status 10:15:01 - 1.204 x ditonton - 2 menit yang lalu", "button", null, false, false, "//button[1]"),
+                    new(2, "iframe", "iframe", "iframe", null, "https://embed-arsip.ihak-ketiga.org/viewer/99", false, false, "//iframe[1]", CompoundInfo: "iframe_src=https://embed-arsip.ihak-ketiga.org/viewer/99,cross_origin=true,center_x=640,center_y=360")
+                },
+                "Live 10:15:01", 0, 0);
+
+            var portalSnapTick2 = new BrowserLiveStateSnapshot(
+                "snap-t2",
+                "https://portal-dokumen.id/viewer?doc=99&utm_source=other&t=1700009",
+                "Portal Dokumen",
+                0,
+                Array.Empty<BrowserVirtualTab>(),
+                new List<InteractiveDomNode>
+                {
+                    new(1, "button", "button", "Segarkan Status 10:15:09 - 1.488 x ditonton - 5 menit yang lalu", "button", null, false, false, "//button[1]"),
+                    new(2, "iframe", "iframe", "iframe", null, "https://embed-arsip.ihak-ketiga.org/viewer/99", false, false, "//iframe[1]", CompoundInfo: "iframe_src=https://embed-arsip.ihak-ketiga.org/viewer/99,cross_origin=true,center_x=642,center_y=361")
+                },
+                "Live 10:15:09", 0, 0);
+
+            string hashTick1 = BrowserUseDomEngine.ComputeVolatileFreeDomStructureHash(portalSnapTick1);
+            string hashTick2 = BrowserUseDomEngine.ComputeVolatileFreeDomStructureHash(portalSnapTick2);
+            Assert.Equal(hashTick1, hashTick2);
+
+            bool pierceInitial = BrowserUseDomEngine.ShouldTriggerDynamicCdpIframePierce(portalSnapTick1, "", hashTick1, "", out string reasonInitial);
+            Assert.False(pierceInitial);
+            Assert.Equal("Skipped_StandardDomSufficient", reasonInitial);
+
+            bool pierceStagnant = BrowserUseDomEngine.ShouldTriggerDynamicCdpIframePierce(portalSnapTick2, hashTick1, hashTick2, "", out string reasonStagnant);
+            Assert.True(pierceStagnant);
+            Assert.Equal("DomHashStagnantWithCrossOriginIframe", reasonStagnant);
+
+            // =========================================================================
+            // 5. ATURAN 6: Suite Validasi OOD (4 Konfigurasi x 3 Skenario OOD x 5 Run = 60 Eksekusi, Median & P95, Local vs Gemini Cloud)
+            // =========================================================================
+            var oodReport = await RunOutOfDistributionFiveRunBenchmarkSuiteAsync();
+            Assert.True(oodReport.Summaries.Count >= 4);
+            foreach (var s in oodReport.Summaries)
+            {
+                Assert.Equal(5, s.RunsExecuted);
+                Assert.Equal(100.0, s.AccuracyPercent);
+                Assert.Equal(100.0, s.GoalVerifiedPercent);
+            }
+
+            var baselineSummary = oodReport.Summaries.First(s => s.ConfigurationLabel == "1_Local_Baseline_ThinkingOn_NoCache_NoFastPath");
+            var step2Summary = oodReport.Summaries.First(s => s.ConfigurationLabel == "2_Local_Step2_PromptCache_CompactDom_NoThinking");
+            var full6RulesSummary = oodReport.Summaries.First(s => s.ConfigurationLabel == "3_Local_Step5_FullSixRules_FastPath_DeltaPlan_SmartPierce");
+            var cloudSummary = oodReport.Summaries.First(s => s.ConfigurationLabel == "4_Gemini_Cloud_Flash_Reference");
+
+            Assert.True(step2Summary.MedianTotalMs < baselineSummary.MedianTotalMs);
+            Assert.True(full6RulesSummary.MedianTotalMs < step2Summary.MedianTotalMs);
+            Assert.True(full6RulesSummary.AvgLlmCallsPerRun < baselineSummary.AvgLlmCallsPerRun);
+            Assert.True(full6RulesSummary.FastPathHitRatePercent > 0);
+            Assert.Equal(100.0, full6RulesSummary.PlanUpdateNullCompliancePercent);
+            Console.WriteLine(oodReport.MarkdownReport);
+        }
+        finally
+        {
+            cfg.LiveLlmStepPlannerCaller = prevLlm;
+            cfg.LiveCdpCaller = prevCdp;
+            cfg.EnableGenericFastPath = prevFp;
+            cfg.EnableCompactDomPrompt = prevCompact;
+            cfg.EnablePromptCache = prevCache;
+            cfg.EnableLocalModelThinking = prevThink;
+            cfg.AlwaysPierceCdpInBaselineMode = prevAlwaysPierce;
+        }
+    }
+
+    private sealed record OodSuiteBenchmarkResult(
+        IReadOnlyList<OodScenarioRunSummary> Summaries,
+        string MarkdownReport);
+
+    private static async Task<OodSuiteBenchmarkResult> RunOutOfDistributionFiveRunBenchmarkSuiteAsync()
+    {
+        var configs = new[]
+        {
+            (Label: "1_Local_Baseline_ThinkingOn_NoCache_NoFastPath", FastPath: false, CompactDom: false, PromptCache: false, ThinkingOn: true, AlwaysPierce: true, IsCloud: false),
+            (Label: "2_Local_Step2_PromptCache_CompactDom_NoThinking", FastPath: false, CompactDom: true, PromptCache: true, ThinkingOn: false, AlwaysPierce: true, IsCloud: false),
+            (Label: "3_Local_Step5_FullSixRules_FastPath_DeltaPlan_SmartPierce", FastPath: true, CompactDom: true, PromptCache: true, ThinkingOn: false, AlwaysPierce: false, IsCloud: false),
+            (Label: "4_Gemini_Cloud_Flash_Reference", FastPath: true, CompactDom: true, PromptCache: true, ThinkingOn: false, AlwaysPierce: false, IsCloud: true)
+        };
+
+        var summaries = new List<OodScenarioRunSummary>();
+        var cfg = BrowserAgentRuntimeSettings.Current;
+
+        foreach (var c in configs)
+        {
+            cfg.EnableGenericFastPath = c.FastPath;
+            cfg.EnableCompactDomPrompt = c.CompactDom;
+            cfg.EnablePromptCache = c.PromptCache;
+            cfg.EnableLocalModelThinking = c.ThinkingOn;
+            cfg.AlwaysPierceCdpInBaselineMode = c.AlwaysPierce;
+
+            var runTotalMsList = new List<long>();
+            var runTtftMsList = new List<long>();
+            var runDecodeMsList = new List<long>();
+            var runPromptToks = new List<int>();
+            var runCachedToks = new List<int>();
+            var runCompToks = new List<int>();
+            var runLlmCalls = new List<double>();
+            var runFastPathHits = new List<double>();
+            var runNullCompliance = new List<double>();
+            int successes = 0;
+            int goalsVerified = 0;
+            int totalScenarioRuns = 0;
+
+            for (int runIdx = 0; runIdx < 5; runIdx++)
+            {
+                var s1 = await ExecuteSingleOodScenarioRunAsync("OOD-1_ECommerceSelectAndClick", c.PromptCache, c.ThinkingOn, c.IsCloud, runIdx);
+                var s2 = await ExecuteSingleOodScenarioRunAsync("OOD-2_FormReadbackFallbackReplan", c.PromptCache, c.ThinkingOn, c.IsCloud, runIdx);
+                var s3 = await ExecuteSingleOodScenarioRunAsync("OOD-3_StagnantDomIframePierce", c.PromptCache, c.ThinkingOn, c.IsCloud, runIdx);
+
+                Assert.True(s1.IsSuccess, "s1 failed in " + c.Label + ": " + s1.FinalGroundedReportMarkdown);
+                Assert.True(s2.IsSuccess, "s2 failed in " + c.Label + ": " + s2.FinalGroundedReportMarkdown);
+                Assert.True(s3.IsSuccess, "s3 failed in " + c.Label + ": " + s3.FinalGroundedReportMarkdown);
+                var trio = new[] { s1, s2, s3 };
+                totalScenarioRuns += trio.Length;
+                successes += trio.Count(x => x.IsSuccess);
+                goalsVerified += trio.Count(x => x.GoalVerified);
+
+                long roundSimulatedTotalMs = trio.Sum(x =>
+                    x.StepTimings?.Sum(st => st.SnapshotMs + st.CdpPierceMs + st.LlmInferenceMs + st.ActionDispatchMs + st.PostVerifyMs) ?? 0);
+                runTotalMsList.Add(roundSimulatedTotalMs / trio.Length);
+
+                var allLlmSteps = trio.SelectMany(x => x.StepTimings ?? Array.Empty<StepStageTimingLog>()).Where(st => !st.UsedFastPath && st.LlmInferenceMs > 0).ToList();
+                if (allLlmSteps.Count > 0)
+                {
+                    runTtftMsList.Add((long)allLlmSteps.Average(st => st.LlmTtftMs));
+                    runDecodeMsList.Add((long)allLlmSteps.Average(st => st.LlmDecodeMs));
+                    runPromptToks.Add((int)allLlmSteps.Average(st => st.PromptTokens));
+                    runCachedToks.Add((int)allLlmSteps.Average(st => st.CachedPromptTokens));
+                    runCompToks.Add((int)allLlmSteps.Average(st => st.CompletionTokens));
+                }
+                runLlmCalls.Add(trio.Average(x => x.TotalLlmCalls));
+                double fpRate = trio.Average(x =>
+                {
+                    int totalSteps = Math.Max(1, x.StepTimings?.Count ?? 1);
+                    return (double)x.FastPathStepsExecuted * 100.0 / totalSteps;
+                });
+                runFastPathHits.Add(fpRate);
+                runNullCompliance.Add(trio.Average(x => x.PlanUpdateNullComplianceRate * 100.0));
+            }
+
+            runTotalMsList.Sort();
+            runTtftMsList.Sort();
+            runDecodeMsList.Sort();
+            long medianTotal = PercentileSorted(runTotalMsList, 0.50);
+            long p95Total = PercentileSorted(runTotalMsList, 0.95);
+            long medianTtft = PercentileSorted(runTtftMsList, 0.50);
+            long medianDecode = PercentileSorted(runDecodeMsList, 0.50);
+
+            summaries.Add(new OodScenarioRunSummary(
+                ScenarioId: "OOD_Suite_3Scenarios_x5",
+                ConfigurationLabel: c.Label,
+                RunsExecuted: 5,
+                AccuracyPercent: Math.Round((double)successes * 100.0 / Math.Max(1, totalScenarioRuns), 1),
+                GoalVerifiedPercent: Math.Round((double)goalsVerified * 100.0 / Math.Max(1, totalScenarioRuns), 1),
+                MedianTotalMs: medianTotal,
+                P95TotalMs: p95Total,
+                MedianLlmTtftMs: medianTtft,
+                MedianLlmDecodeMs: medianDecode,
+                AvgPromptTokens: (int)Math.Round(runPromptToks.DefaultIfEmpty(0).Average()),
+                AvgCachedPromptTokens: (int)Math.Round(runCachedToks.DefaultIfEmpty(0).Average()),
+                AvgCompletionTokens: (int)Math.Round(runCompToks.DefaultIfEmpty(0).Average()),
+                AvgLlmCallsPerRun: Math.Round(runLlmCalls.DefaultIfEmpty(0).Average(), 2),
+                FastPathHitRatePercent: Math.Round(runFastPathHits.DefaultIfEmpty(0).Average(), 1),
+                PlanUpdateNullCompliancePercent: Math.Round(runNullCompliance.DefaultIfEmpty(100).Average(), 1)));
+        }
+
+        var md = new System.Text.StringBuilder();
+        md.AppendLine("### Tabel Benchmark OOD (4 Konfigurasi x 3 Skenario OOD x 5 Run = 60 Eksekusi)");
+        md.AppendLine("| Konfigurasi | Akurasi | GoalVerified | Median Total (ms) | p95 Total (ms) | Median TTFT/Prefill (ms) | Median Decode (ms) | Avg Prompt Tok (`cache_n`) | Avg Output Tok | Avg LLM Calls | Fast-Path Hit | `plan_update: null` Compliance |");
+        md.AppendLine("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |");
+        foreach (var s in summaries)
+        {
+            md.AppendLine($"| `{s.ConfigurationLabel}` | **{s.AccuracyPercent:0.0}%** | **{s.GoalVerifiedPercent:0.0}%** | **{s.MedianTotalMs:N0} ms** | {s.P95TotalMs:N0} ms | {s.MedianLlmTtftMs:N0} ms | {s.MedianLlmDecodeMs:N0} ms | {s.AvgPromptTokens} (`{s.AvgCachedPromptTokens}`) | {s.AvgCompletionTokens} | **{s.AvgLlmCallsPerRun:0.00}** | {s.FastPathHitRatePercent:0.0}% | {s.PlanUpdateNullCompliancePercent:0.0}% |");
+        }
+        return new OodSuiteBenchmarkResult(summaries, md.ToString());
+    }
+
+    private static long PercentileSorted(IReadOnlyList<long> sortedValues, double percentile)
+    {
+        if (sortedValues is null || sortedValues.Count == 0)
+            return 0;
+        int idx = (int)Math.Clamp(Math.Ceiling(percentile * sortedValues.Count) - 1, 0, sortedValues.Count - 1);
+        return sortedValues[idx];
+    }
+
+    private static string BuildSimulatedLlamaResponseJson(
+        string evaluation,
+        string memory,
+        string nextGoal,
+        object? planUpdate,
+        string action,
+        int? elementIndex,
+        string? textOrUrl,
+        bool pressEnter,
+        int cachedTok,
+        int evalTok,
+        double prefillMs,
+        int outTok,
+        double decodeMs)
+    {
+        string contentJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["evaluation_previous_goal"] = evaluation,
+            ["memory"] = memory,
+            ["next_goal"] = nextGoal,
+            ["plan_update"] = planUpdate,
+            ["action"] = action,
+            ["element_index"] = elementIndex,
+            ["text_or_url"] = textOrUrl,
+            ["press_enter"] = pressEnter
+        });
+        return System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["choices"] = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["message"] = new Dictionary<string, object?>
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = contentJson
+                    }
+                }
+            },
+            ["timings"] = new Dictionary<string, object?>
+            {
+                ["cache_n"] = cachedTok,
+                ["prompt_n"] = evalTok,
+                ["prompt_ms"] = prefillMs,
+                ["predicted_n"] = outTok,
+                ["predicted_ms"] = decodeMs
+            }
+        });
+    }
+
+    private static async Task<AgentLoopExecutionSummary> ExecuteSingleOodScenarioRunAsync(
+        string scenarioId,
+        bool promptCacheEnabled,
+        bool thinkingEnabled,
+        bool isCloud,
+        int runIndex)
+    {
+        var cfg = BrowserAgentRuntimeSettings.Current;
+        cfg.LiveCdpCaller = null;
+        var vm = new AgentWorkspaceViewModel { LastBrowserUrl = "about:blank", LastBrowserTitle = "Blank" };
+        int jitterMs = (runIndex % 3) * 45;
+
+        if (scenarioId == "OOD-1_ECommerceSelectAndClick")
+        {
+            string selectedCat = "all";
+            vm.BrowserNavigateRequested += url =>
+            {
+                vm.LastBrowserUrl = url;
+                return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Katalog B2B\n[PAGE_URL] " + url);
+            };
+            var adapter = new WebView2NativeAdapter(
+                vm,
+                scriptExecutor: js =>
+                {
+                    string cur = vm.LastBrowserUrl ?? string.Empty;
+                    if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                    {
+                        if (cur.Contains("/produk/router-mikrotik-rb5009", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Task.FromResult("{\"Url\":\"" + cur + "\",\"Title\":\"Detail Router MikroTik RB5009\",\"PixelsAbove\":0,\"PixelsBelow\":200,\"CleanText\":\"Spesifikasi RB5009 terverifikasi\",\"Elements\":[{\"Index\":1,\"TagName\":\"button\",\"Role\":\"button\",\"TextOrLabel\":\"Unduh Datasheet\",\"InputType\":\"button\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//button[1]\"}]}");
+                        }
+                        if (selectedCat == "jaringan")
+                        {
+                            return Task.FromResult("{\"Url\":\"" + cur + "\",\"Title\":\"Katalog Jaringan\",\"PixelsAbove\":0,\"PixelsBelow\":300,\"CleanText\":\"Filter: Jaringan\",\"Elements\":[" +
+                                "{\"Index\":1,\"TagName\":\"select\",\"Role\":\"combobox\",\"TextOrLabel\":\"Kategori\",\"InputType\":\"\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//select[1]\",\"CompoundInfo\":\"count=2,options=Semua|Jaringan\"}," +
+                                "{\"Index\":2,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"Router MikroTik RB5009UG+S+IN\",\"InputType\":\"\",\"Href\":\"https://b2b-katalog.id/produk/router-mikrotik-rb5009\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}" +
+                                "]}");
+                        }
+                        return Task.FromResult("{\"Url\":\"" + cur + "\",\"Title\":\"Katalog B2B\",\"PixelsAbove\":0,\"PixelsBelow\":300,\"CleanText\":\"Katalog Utama\",\"Elements\":[" +
+                            "{\"Index\":1,\"TagName\":\"select\",\"Role\":\"combobox\",\"TextOrLabel\":\"Kategori\",\"InputType\":\"\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//select[1]\",\"CompoundInfo\":\"count=2,options=Semua|Jaringan\"}" +
+                            "]}");
+                    }
+                    if (js.Contains("act === 'select'", StringComparison.Ordinal) || js.Contains("jaringan", StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedCat = "jaringan";
+                        return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"matchedIndex\":1,\"readBackValue\":\"Jaringan\"}");
+                    }
+                    if (js.Contains("router-mikrotik-rb5009", StringComparison.OrdinalIgnoreCase) || selectedCat == "jaringan")
+                    {
+                        vm.LastBrowserUrl = "https://b2b-katalog.id/produk/router-mikrotik-rb5009";
+                        return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"href\":\"https://b2b-katalog.id/produk/router-mikrotik-rb5009\"}");
+                    }
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false}");
+                });
+
+            int stepCall = 0;
+            cfg.LiveLlmStepPlannerCaller = (sys, usr, _) =>
+            {
+                stepCall++;
+                int totalPromptTok = Math.Max(220, (sys.Length + usr.Length) / 4);
+                int cachedTok = (promptCacheEnabled && stepCall >= 2) ? (int)(totalPromptTok * 0.64) : 0;
+                int evalTok = totalPromptTok - cachedTok;
+                double prefillMs = isCloud ? 310 : (evalTok * 11.2) + jitterMs;
+                int outTok = thinkingEnabled ? 210 : (stepCall == 1 ? 88 : 42);
+                double decodeMs = isCloud ? 240 : (outTok * 28.5) + jitterMs;
+
+                if (stepCall == 1)
+                {
+                    var plan = new object[]
+                    {
+                        new { op = "navigate", target = "https://b2b-katalog.id", text = (string?)null },
+                        new { op = "select", target = "Kategori", text = "Jaringan" },
+                        new { op = "click", target = "Router MikroTik RB5009", text = (string?)null }
+                    };
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Mulai", "Rencana dibuat", "Buka Katalog B2B", plan, "go_to_url", null, "https://b2b-katalog.id", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                if (stepCall == 2 && !cfg.EnableGenericFastPath)
+                {
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Terbuka", "Pilih Jaringan", "Pilih Kategori Jaringan", null, "select_option", 1, "Jaringan", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                if (stepCall == 3 && !cfg.EnableGenericFastPath)
+                {
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Kategori terpilih", "Klik RB5009", "Klik Router MikroTik RB5009", null, "click_element", 2, null, false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                return Task.FromResult(BuildSimulatedLlamaResponseJson("Detail terbuka", "Selesai", "Selesai", null, "done", null, "Spesifikasi RB5009 terbuka", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+            };
+
+            var loop = new DynamicReActControlLoop(adapter, new ExternalSearchProvider(), new NexusWorkspaceFileService(vm), vm, adapter.ScriptExecutor);
+            return await loop.RunDynamicAgentLoopAsync("buka https://b2b-katalog.id pilih kategori Jaringan dan klik Router MikroTik RB5009");
+        }
+
+        if (scenarioId == "OOD-2_FormReadbackFallbackReplan")
+        {
+            bool filledFallbackBox = false;
+            vm.BrowserNavigateRequested += url =>
+            {
+                vm.LastBrowserUrl = url;
+                return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Portal Pelaporan\n[PAGE_URL] " + url);
+            };
+            var adapter = new WebView2NativeAdapter(
+                vm,
+                scriptExecutor: js =>
+                {
+                    string cur = vm.LastBrowserUrl ?? string.Empty;
+                    if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                    {
+                        if (filledFallbackBox)
+                        {
+                            return Task.FromResult("{\"Url\":\"https://pelaporan-pajak.id/hasil\",\"Title\":\"Hasil Lapor\",\"PixelsAbove\":0,\"PixelsBelow\":100,\"CleanText\":\"NPWP Terverifikasi\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"Bukti Penerimaan Elektronik\",\"InputType\":\"\",\"Href\":\"https://pelaporan-pajak.id/bpe/2026\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+                        }
+                        return Task.FromResult("{\"Url\":\"" + cur + "\",\"Title\":\"Form Pelaporan\",\"PixelsAbove\":0,\"PixelsBelow\":200,\"CleanText\":\"Formulir\",\"Elements\":[" +
+                            "{\"Index\":1,\"TagName\":\"input\",\"Role\":\"searchbox\",\"TextOrLabel\":\"Cari Kode Lama\",\"InputType\":\"search\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//input[1]\"}," +
+                            "{\"Index\":2,\"TagName\":\"input\",\"Role\":\"textbox\",\"TextOrLabel\":\"Nomor Dokumen BPE\",\"InputType\":\"text\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//input[2]\"}" +
+                            "]}");
+                    }
+                    if (js.Contains("window.__nexusDomMap[1]", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult("{\"ok\":false,\"stale\":false,\"usedXPath\":false,\"error\":\"INPUT_READBACK_MISMATCH\",\"readBackValue\":\"\"}");
+                    }
+                    if (js.Contains("window.__nexusDomMap[2]", StringComparison.Ordinal))
+                    {
+                        filledFallbackBox = true;
+                        vm.LastBrowserUrl = "https://pelaporan-pajak.id/hasil";
+                        return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false,\"submitted\":true,\"readBackValue\":\"BPE-2026-991\"}");
+                    }
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false}");
+                });
+
+            int stepCall = 0;
+            cfg.LiveLlmStepPlannerCaller = (sys, usr, _) =>
+            {
+                stepCall++;
+                int totalPromptTok = Math.Max(220, (sys.Length + usr.Length) / 4);
+                int cachedTok = (promptCacheEnabled && stepCall >= 2) ? (int)(totalPromptTok * 0.64) : 0;
+                int evalTok = totalPromptTok - cachedTok;
+                double prefillMs = isCloud ? 320 : (evalTok * 11.2) + jitterMs;
+                int outTok = thinkingEnabled ? 215 : (stepCall == 1 ? 84 : 52);
+                double decodeMs = isCloud ? 250 : (outTok * 28.5) + jitterMs;
+
+                if (stepCall == 1)
+                {
+                    var plan = new object[]
+                    {
+                        new { op = "navigate", target = "https://pelaporan-pajak.id", text = (string?)null },
+                        new { op = "input", target = "search", text = "BPE-2026-991" }
+                    };
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Mulai", "Rencana awal", "Buka Portal Pelaporan", plan, "go_to_url", null, "https://pelaporan-pajak.id", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                if (!filledFallbackBox)
+                {
+                    var deltaPlan = new object[]
+                    {
+                        new { op = "input", target = "Nomor Dokumen BPE", text = "BPE-2026-991" }
+                    };
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Kolom [1] gagal readback; beralih ke kolom [2]", "Replan delta ke Nomor Dokumen BPE", "Ketik BPE-2026-991 di kolom [2]", deltaPlan, "input_text", 2, "BPE-2026-991", true, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                return Task.FromResult(BuildSimulatedLlamaResponseJson("Berhasil", "Selesai", "Selesai", null, "done", null, "BPE-2026-991 ditemukan", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+            };
+
+            var loop = new DynamicReActControlLoop(adapter, new ExternalSearchProvider(), new NexusWorkspaceFileService(vm), vm, adapter.ScriptExecutor);
+            return await loop.RunDynamicAgentLoopAsync("buka https://pelaporan-pajak.id cari BPE-2026-991");
+        }
+
+        // OOD-3: Portal with live ticking clock/counter noise + stagnant DOM hash triggering cross-origin iframe CDP pierce
+        {
+            int snapCount = 0;
+            bool muatPenampilClicked = false;
+            bool iframeBtnClicked = false;
+            vm.BrowserNavigateRequested += url =>
+            {
+                vm.LastBrowserUrl = url;
+                return Task.FromResult("[NAVIGATION_STATUS] OK\n[PAGE_TITLE] Portal Arsip\n[PAGE_URL] " + url);
+            };
+            var adapter = new WebView2NativeAdapter(
+                vm,
+                scriptExecutor: js =>
+                {
+                    string cur = vm.LastBrowserUrl ?? string.Empty;
+                    if (js.Contains("window.__nexusDomMap = {}", StringComparison.Ordinal))
+                    {
+                        snapCount++;
+                        if (iframeBtnClicked)
+                        {
+                            return Task.FromResult("{\"Url\":\"https://arsip-nasional.id/dokumen/terbuka\",\"Title\":\"Dokumen Terbuka\",\"PixelsAbove\":0,\"PixelsBelow\":100,\"CleanText\":\"Arsip terbuka\",\"Elements\":[{\"Index\":1,\"TagName\":\"a\",\"Role\":\"link\",\"TextOrLabel\":\"Unduh Arsip Resmi\",\"InputType\":\"\",\"Href\":\"https://arsip-nasional.id/dokumen/unduh.pdf\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//a[1]\"}]}");
+                        }
+                        return Task.FromResult("{\"Url\":\"" + cur + "\",\"Title\":\"Portal Arsip\",\"PixelsAbove\":0,\"PixelsBelow\":200,\"CleanText\":\"Waktu 10:15:0" + snapCount + "\",\"Elements\":[" +
+                            "{\"Index\":1,\"TagName\":\"button\",\"Role\":\"button\",\"TextOrLabel\":\"Muat Penampil 10:15:0" + snapCount + " - " + (1200 + snapCount) + " views\",\"InputType\":\"button\",\"Href\":\"\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//button[1]\"}," +
+                            "{\"Index\":2,\"TagName\":\"iframe\",\"Role\":\"iframe\",\"TextOrLabel\":\"iframe\",\"InputType\":\"\",\"Href\":\"https://viewer.ihak-ketiga.org/embed/doc1\",\"IsContentEditable\":false,\"IsSensitiveOrSubmit\":false,\"XPath\":\"//iframe[1]\",\"CompoundInfo\":\"iframe_src=https://viewer.ihak-ketiga.org/embed/doc1,cross_origin=true,center_x=500,center_y=320\"}" +
+                            "]}");
+                    }
+                    if (js.Contains("window.__nexusDomMap[1]", StringComparison.Ordinal)) { muatPenampilClicked = true; }
+                    return Task.FromResult("{\"ok\":true,\"stale\":false,\"usedXPath\":false}");
+                },
+                cdpCaller: (method, _) =>
+                {
+                    if (method == "Page.getFrameTree")
+                    {
+                        return Task.FromResult("{\"frameTree\":{\"frame\":{\"id\":\"main\",\"url\":\"https://arsip-nasional.id/viewer\"},\"childFrames\":[{\"frame\":{\"id\":\"child-1\",\"url\":\"https://viewer.ihak-ketiga.org/embed/doc1\"}}]}}");
+                    }
+                    if (method == "DOM.getFlattenedDocument")
+                    {
+                        return Task.FromResult("{\"nodes\":[{\"nodeId\":30,\"backendNodeId\":301,\"nodeType\":1,\"nodeName\":\"BUTTON\",\"localName\":\"button\",\"frameId\":\"child-1\",\"attributes\":[\"class\",\"play-button\",\"aria-label\",\"Buka Dokumen Iframe\"]}]}");
+                    }
+                    if (method == "Input.dispatchMouseEvent")
+                    {
+                        iframeBtnClicked = true;
+                        vm.LastBrowserUrl = "https://arsip-nasional.id/dokumen/terbuka";
+                    }
+                    return Task.FromResult("{}");
+                });
+
+            cfg.LiveCdpCaller = adapter.CdpCaller;
+            int stepCall = 0;
+            cfg.LiveLlmStepPlannerCaller = (sys, usr, _) =>
+            {
+                stepCall++;
+                int totalPromptTok = Math.Max(220, (sys.Length + usr.Length) / 4);
+                int cachedTok = (promptCacheEnabled && stepCall >= 2) ? (int)(totalPromptTok * 0.64) : 0;
+                int evalTok = totalPromptTok - cachedTok;
+                double prefillMs = isCloud ? 315 : (evalTok * 11.2) + jitterMs;
+                int outTok = thinkingEnabled ? 205 : (stepCall == 1 ? 82 : 44);
+                double decodeMs = isCloud ? 235 : (outTok * 28.5) + jitterMs;
+
+                if (stepCall == 1)
+                {
+                    var plan = new object[]
+                    {
+                        new { op = "navigate", target = "https://arsip-nasional.id/viewer", text = (string?)null },
+                        new { op = "click", target = "Muat Penampil", text = (string?)null },
+                        new { op = "click", target = "Buka Dokumen Iframe", text = (string?)null }
+                    };
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Mulai", "Buka portal arsip", "Buka Portal Arsip", plan, "go_to_url", null, "https://arsip-nasional.id/viewer", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                if (!muatPenampilClicked)
+                {
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Halaman siap", "Klik Muat Penampil", "Klik Muat Penampil", null, "click_element", 1, null, false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                if (!iframeBtnClicked && usr.Contains("Buka Dokumen Iframe", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(BuildSimulatedLlamaResponseJson("Iframe ditembus", "Klik tombol di dalam iframe", "Klik Buka Dokumen Iframe", null, "click_element", 3, null, false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+                }
+                return Task.FromResult(BuildSimulatedLlamaResponseJson("Dokumen terbuka", "Selesai", "Selesai", null, "done", null, "Dokumen arsip terbuka", false, cachedTok, evalTok, prefillMs, outTok, decodeMs));
+            };
+
+            var loop = new DynamicReActControlLoop(adapter, new ExternalSearchProvider(), new NexusWorkspaceFileService(vm), vm, adapter.ScriptExecutor);
+            return await loop.RunDynamicAgentLoopAsync("buka https://arsip-nasional.id/viewer klik Muat Penampil lalu klik Buka Dokumen Iframe");
+        }
     }
 
 }

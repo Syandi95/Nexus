@@ -27,6 +27,30 @@ using Nexus.Foundation.Config;
 
 namespace Nexus.App.ViewModels
 {
+    public sealed class CodexTimelineStepViewModel : ViewModelBase
+    {
+        private bool _isDetailExpanded;
+        public string IconBadge { get; init; } = "🌐";
+        public string StepTitle { get; init; } = string.Empty;
+        public string StepDetailText { get; init; } = string.Empty;
+        public bool IsCompleted { get; init; } = true;
+        public string? FaviconImageUrl { get; init; }
+        public bool HasFaviconImageUrl => !string.IsNullOrWhiteSpace(FaviconImageUrl);
+
+        public bool IsDetailExpanded
+        {
+            get => _isDetailExpanded;
+            set => SetProperty(ref _isDetailExpanded, value);
+        }
+
+        public ICommand ToggleStepDetailCommand { get; }
+
+        public CodexTimelineStepViewModel()
+        {
+            ToggleStepDetailCommand = new RelayCommand(() => IsDetailExpanded = !IsDetailExpanded);
+        }
+    }
+
     public class ChatMessageItemViewModel : ViewModelBase
     {
         private string _content = string.Empty;
@@ -50,13 +74,419 @@ namespace Nexus.App.ViewModels
         private bool _isThinking;
         private string _thinkingDurationText = string.Empty;
         private bool _isThinkingCollapsed;
+        private bool _isBrowserAgentCollapsibleCard;
+        private NexusMessageParser? _lastParser;
+        private bool _lastIncludeCodeHeuristic = true;
+
+        private Nexus.App.Services.BrowserAgent.CanvasExtractedArtifact? _canvasArtifact;
+        private bool _hasCanvasCard;
+        private bool _isCanvasCardClosed;
+        private bool _isCanvasPreviewMode = true;
+        private bool _isCanvasMaximized;
+        private bool _isCanvasExportMenuOpen;
+        private string _canvasTitle = string.Empty;
+        private string _canvasRawCodeText = string.Empty;
+        private string _canvasPreviewHeadline = string.Empty;
+        private string _canvasPreviewSubtitle = string.Empty;
+        private string _canvasPreviewBodyText = string.Empty;
+        private string _canvasHighlightMetricValue = string.Empty;
+        private string _canvasHighlightMetricCaption = string.Empty;
+        private string _canvasExportStatusText = string.Empty;
+        private string _lastExportedCanvasFilePath = string.Empty;
 
         public ChatMessageItemViewModel()
         {
             ToggleThinkingCollapseCommand = new RelayCommand(() => IsThinkingCollapsed = !IsThinkingCollapsed);
+            SetCanvasCodeModeCommand = new RelayCommand(() => IsCanvasPreviewMode = false);
+            SetCanvasPreviewModeCommand = new RelayCommand(() => IsCanvasPreviewMode = true);
+            ToggleCanvasMaximizeCommand = new RelayCommand(() => IsCanvasMaximized = !IsCanvasMaximized);
+            ToggleCanvasCloseCommand = new RelayCommand(() => IsCanvasCardClosed = !IsCanvasCardClosed);
+            ToggleCanvasExportMenuCommand = new RelayCommand(() => IsCanvasExportMenuOpen = !IsCanvasExportMenuOpen);
+            ExportCanvasPdfCommand = new RelayCommand(() => ExecuteCanvasExport("pdf"));
+            ExportCanvasXlsxCommand = new RelayCommand(() => ExecuteCanvasExport("xlsx"));
+            ExportCanvasRawCommand = new RelayCommand(() => ExecuteCanvasExport("raw"));
+            CopyCanvasContentCommand = new RelayCommand(() =>
+            {
+                IsCanvasExportMenuOpen = false;
+                if (!string.IsNullOrWhiteSpace(_canvasRawCodeText))
+                {
+                    try { Clipboard.SetText(_canvasRawCodeText); } catch { }
+                    CanvasExportStatusText = "✓ Isi Canvas disalin ke Clipboard";
+                }
+            });
         }
 
         public ICommand ToggleThinkingCollapseCommand { get; }
+        public ICommand SetCanvasCodeModeCommand { get; }
+        public ICommand SetCanvasPreviewModeCommand { get; }
+        public ICommand ToggleCanvasMaximizeCommand { get; }
+        public ICommand ToggleCanvasCloseCommand { get; }
+        public ICommand ToggleCanvasExportMenuCommand { get; }
+        public ICommand ExportCanvasPdfCommand { get; }
+        public ICommand ExportCanvasXlsxCommand { get; }
+        public ICommand ExportCanvasRawCommand { get; }
+        public ICommand CopyCanvasContentCommand { get; }
+
+        public bool HasCanvasCard
+        {
+            get => _hasCanvasCard;
+            set
+            {
+                if (SetProperty(ref _hasCanvasCard, value))
+                {
+                    OnPropertyChanged(nameof(IsCanvasCardVisible));
+                    OnPropertyChanged(nameof(IsCanvasCollapsedChipVisible));
+                }
+            }
+        }
+
+        public bool IsCanvasCardClosed
+        {
+            get => _isCanvasCardClosed;
+            set
+            {
+                if (SetProperty(ref _isCanvasCardClosed, value))
+                {
+                    OnPropertyChanged(nameof(IsCanvasCardVisible));
+                    OnPropertyChanged(nameof(IsCanvasCollapsedChipVisible));
+                }
+            }
+        }
+
+        public bool IsCanvasCardVisible => _hasCanvasCard && !_isCanvasCardClosed;
+        public bool IsCanvasCollapsedChipVisible => _hasCanvasCard && _isCanvasCardClosed;
+
+        public bool IsCanvasPreviewMode
+        {
+            get => _isCanvasPreviewMode;
+            set
+            {
+                if (SetProperty(ref _isCanvasPreviewMode, value))
+                {
+                    OnPropertyChanged(nameof(IsCanvasCodeMode));
+                }
+            }
+        }
+
+        public bool IsCanvasCodeMode => !_isCanvasPreviewMode;
+
+        public bool IsCanvasMaximized
+        {
+            get => _isCanvasMaximized;
+            set
+            {
+                if (SetProperty(ref _isCanvasMaximized, value))
+                {
+                    OnPropertyChanged(nameof(CanvasBodyMaxHeight));
+                }
+            }
+        }
+
+        public double CanvasBodyMaxHeight => _isCanvasMaximized ? 860.0 : 420.0;
+
+        public bool IsCanvasExportMenuOpen
+        {
+            get => _isCanvasExportMenuOpen;
+            set => SetProperty(ref _isCanvasExportMenuOpen, value);
+        }
+
+        public string CanvasTitle
+        {
+            get => _canvasTitle;
+            set => SetProperty(ref _canvasTitle, value);
+        }
+
+        public string CanvasRawCodeText
+        {
+            get => _canvasRawCodeText;
+            set => SetProperty(ref _canvasRawCodeText, value);
+        }
+
+        public string CanvasPreviewHeadline
+        {
+            get => _canvasPreviewHeadline;
+            set => SetProperty(ref _canvasPreviewHeadline, value);
+        }
+
+        public string CanvasPreviewSubtitle
+        {
+            get => _canvasPreviewSubtitle;
+            set => SetProperty(ref _canvasPreviewSubtitle, value);
+        }
+
+        public string CanvasPreviewBodyText
+        {
+            get => _canvasPreviewBodyText;
+            set => SetProperty(ref _canvasPreviewBodyText, value);
+        }
+
+        public string CanvasHighlightMetricValue
+        {
+            get => _canvasHighlightMetricValue;
+            set
+            {
+                if (SetProperty(ref _canvasHighlightMetricValue, value))
+                {
+                    OnPropertyChanged(nameof(HasCanvasHighlightMetric));
+                }
+            }
+        }
+
+        public string CanvasHighlightMetricCaption
+        {
+            get => _canvasHighlightMetricCaption;
+            set => SetProperty(ref _canvasHighlightMetricCaption, value);
+        }
+
+        public bool HasCanvasHighlightMetric => !string.IsNullOrWhiteSpace(_canvasHighlightMetricValue);
+
+        public string CanvasExportStatusText
+        {
+            get => _canvasExportStatusText;
+            set
+            {
+                if (SetProperty(ref _canvasExportStatusText, value))
+                {
+                    OnPropertyChanged(nameof(HasCanvasExportStatus));
+                }
+            }
+        }
+
+        private bool _isCanvasBuilding;
+        public bool IsCanvasBuilding
+        {
+            get => _isCanvasBuilding;
+            set
+            {
+                if (SetProperty(ref _isCanvasBuilding, value))
+                {
+                    OnPropertyChanged(nameof(CanvasStatusBadgeText));
+                    OnPropertyChanged(nameof(HasCanvasStatusBadge));
+                }
+            }
+        }
+
+        public string CanvasStatusBadgeText => _isCanvasBuilding ? "⏳ Sedang menyusun di Canvas..." : string.Empty;
+        public bool HasCanvasStatusBadge => _isCanvasBuilding;
+
+        private bool _isCodexTimelineLocked;
+        private string _lockedBrowserStepHeaderMarkdown = string.Empty;
+        public ObservableCollection<CodexTimelineStepViewModel> CodexBrowserSteps { get; } = new();
+        public bool HasCodexBrowserSteps => CodexBrowserSteps.Count > 0;
+
+        public bool HasCanvasExportStatus => !string.IsNullOrWhiteSpace(_canvasExportStatusText);
+        public string LastExportedCanvasFilePath => _lastExportedCanvasFilePath;
+
+        public void LockCodexBrowserTimelineFromMarkdown(string? browserReportMarkdown, string? headerDurationText = null)
+        {
+            if (string.IsNullOrWhiteSpace(browserReportMarkdown))
+                return;
+            if (Application.Current?.Dispatcher is { } disp && !disp.CheckAccess())
+            {
+                disp.Invoke(() => LockCodexBrowserTimelineFromMarkdown(browserReportMarkdown, headerDurationText));
+                return;
+            }
+            var headerLines = new List<string>();
+            foreach (var line in browserReportMarkdown.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string trimmed = line.Trim();
+                if (trimmed.StartsWith(">", StringComparison.Ordinal))
+                {
+                    if (headerLines.Count == 0 &&
+                        !string.IsNullOrWhiteSpace(headerDurationText) &&
+                        !trimmed.Contains("‹HEADER:", StringComparison.Ordinal))
+                    {
+                        trimmed += $" · ‹HEADER:{headerDurationText!.Replace("‹", "[").Replace("›", "]")}›";
+                    }
+                    headerLines.Add(trimmed);
+                }
+            }
+            if (headerLines.Count > 0)
+            {
+                _lockedBrowserStepHeaderMarkdown = string.Join(Environment.NewLine, headerLines);
+            }
+            var steps = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.ExtractCodexTimelineStepsFromBrowserCard(browserReportMarkdown);
+            if (steps.Count > 0)
+            {
+                if (CodexBrowserSteps.Count > 0)
+                    CodexBrowserSteps.Clear();
+                foreach (var s in steps)
+                {
+                    CodexBrowserSteps.Add(new CodexTimelineStepViewModel
+                    {
+                        IconBadge = s.IconBadge,
+                        StepTitle = s.StepTitle,
+                        StepDetailText = s.StepDetailText,
+                        IsCompleted = s.IsCompleted,
+                        FaviconImageUrl = s.FaviconImageUrl
+                    });
+                }
+                _isCodexTimelineLocked = true;
+                OnPropertyChanged(nameof(HasCodexBrowserSteps));
+            }
+            IsBrowserAgentCollapsibleCard = true;
+            if (!string.IsNullOrWhiteSpace(headerDurationText))
+            {
+                ThinkingDurationText = headerDurationText!;
+            }
+            // Default to collapsed as soon as the browser run completes (image_deff3f.png)
+            IsThinkingCollapsed = true;
+        }
+
+        public string GetPersistedContentWithBrowserTimelineHeader()
+        {
+            string cur = _content ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(_lockedBrowserStepHeaderMarkdown) &&
+                !cur.TrimStart().StartsWith(">", StringComparison.Ordinal))
+            {
+                return string.IsNullOrWhiteSpace(cur)
+                    ? _lockedBrowserStepHeaderMarkdown
+                    : _lockedBrowserStepHeaderMarkdown + Environment.NewLine + Environment.NewLine + cur.Trim();
+            }
+            return cur;
+        }
+
+        public void RefreshCodexBrowserTimelineFromContent()
+        {
+            if (Application.Current?.Dispatcher is { } disp && !disp.CheckAccess())
+            {
+                disp.Invoke(RefreshCodexBrowserTimelineFromContent);
+                return;
+            }
+            if (!IsAssistant)
+            {
+                if (CodexBrowserSteps.Count > 0)
+                {
+                    CodexBrowserSteps.Clear();
+                    OnPropertyChanged(nameof(HasCodexBrowserSteps));
+                }
+                return;
+            }
+            string sourceMarkdown = _content ?? string.Empty;
+            var steps = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.ExtractCodexTimelineStepsFromBrowserCard(sourceMarkdown);
+            if (steps.Count == 0)
+            {
+                if (_isCodexTimelineLocked && CodexBrowserSteps.Count > 0)
+                {
+                    OnPropertyChanged(nameof(HasCodexBrowserSteps));
+                    return;
+                }
+                if (CodexBrowserSteps.Count > 0)
+                {
+                    CodexBrowserSteps.Clear();
+                    OnPropertyChanged(nameof(HasCodexBrowserSteps));
+                    OnPropertyChanged(nameof(HasReasoning));
+                }
+                return;
+            }
+            if (CodexBrowserSteps.Count > 0)
+                CodexBrowserSteps.Clear();
+            foreach (var s in steps)
+            {
+                CodexBrowserSteps.Add(new CodexTimelineStepViewModel
+                {
+                    IconBadge = s.IconBadge,
+                    StepTitle = s.StepTitle,
+                    StepDetailText = s.StepDetailText,
+                    IsCompleted = s.IsCompleted,
+                    FaviconImageUrl = s.FaviconImageUrl
+                });
+            }
+            if (CodexBrowserSteps.Count > 0)
+            {
+                IsBrowserAgentCollapsibleCard = true;
+                if (string.IsNullOrWhiteSpace(_thinkingDurationText))
+                {
+                    string? reconstructed = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.ExtractOrReconstructHeaderSummaryFromBrowserCard(sourceMarkdown);
+                    if (!string.IsNullOrWhiteSpace(reconstructed))
+                    {
+                        ThinkingDurationText = reconstructed!;
+                    }
+                    if (!_isStreaming && !_isCodexTimelineLocked)
+                    {
+                        _isThinkingCollapsed = true;
+                        OnPropertyChanged(nameof(IsThinkingCollapsed));
+                    }
+                }
+            }
+            OnPropertyChanged(nameof(HasCodexBrowserSteps));
+            OnPropertyChanged(nameof(HasReasoning));
+        }
+
+        public void RefreshCanvasCardFromContent(string? fallbackTitle = null, bool isStreamingNow = false)
+        {
+            RefreshCodexBrowserTimelineFromContent();
+            if (!IsAssistant || string.IsNullOrWhiteSpace(_content))
+            {
+                HasCanvasCard = false;
+                IsCanvasBuilding = false;
+                return;
+            }
+
+            // Never trigger a false Canvas card on standard NEXUS Browser Agent navigation/playback status cards!
+            if (_isBrowserAgentCollapsibleCard &&
+                Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.IsBrowserAgentStatusMessage(_content) &&
+                string.IsNullOrWhiteSpace(Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.StripBrowserAgentStatusAndSourceTable(_content)))
+            {
+                HasCanvasCard = false;
+                IsCanvasBuilding = false;
+                return;
+            }
+
+            var artifact = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.TryDetectOrExtractCanvasArtifact(
+                _content,
+                fallbackTitle,
+                allowStreamingPartial: isStreamingNow);
+            if (artifact is null)
+            {
+                HasCanvasCard = false;
+                IsCanvasBuilding = false;
+                return;
+            }
+
+            bool wasAlreadyOpen = _hasCanvasCard;
+            _canvasArtifact = artifact;
+            CanvasTitle = artifact.Title;
+            CanvasRawCodeText = artifact.RawCodeOrMarkdown;
+            CanvasPreviewHeadline = artifact.PreviewHeadline;
+            CanvasPreviewSubtitle = artifact.PreviewSubtitle;
+            CanvasPreviewBodyText = artifact.CleanPreviewMarkdown;
+            CanvasHighlightMetricValue = artifact.HighlightMetricValue;
+            CanvasHighlightMetricCaption = artifact.HighlightMetricCaption;
+            if (!wasAlreadyOpen)
+            {
+                IsCanvasPreviewMode = isStreamingNow ? false : artifact.DefaultToPreviewMode;
+                IsCanvasCardClosed = false;
+            }
+            else if (!isStreamingNow && _isCanvasBuilding)
+            {
+                IsCanvasPreviewMode = artifact.DefaultToPreviewMode;
+            }
+            IsCanvasBuilding = isStreamingNow;
+            HasCanvasCard = true;
+        }
+
+        public Nexus.App.Services.BrowserAgent.CanvasExportResult? ExecuteCanvasExport(string format, string? customTargetDir = null)
+        {
+            IsCanvasExportMenuOpen = false;
+            if (_canvasArtifact is null)
+            {
+                RefreshCanvasCardFromContent();
+                if (_canvasArtifact is null)
+                    return null;
+            }
+
+            string targetDir = !string.IsNullOrWhiteSpace(customTargetDir)
+                ? customTargetDir!
+                : Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.DownloadDirectory;
+            var res = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.ExportCanvasArtifactToDisk(_canvasArtifact, format, targetDir);
+            if (res.IsSuccess)
+            {
+                _lastExportedCanvasFilePath = res.FullFilePath;
+                CanvasExportStatusText = res.SummaryMessage;
+            }
+            return res;
+        }
 
         private DateTime _timestamp = DateTime.UtcNow;
 
@@ -101,6 +531,10 @@ namespace Nexus.App.ViewModels
             set
             {
                 _content = value;
+                if (IsAssistant && Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.IsBrowserAgentStatusMessage(value))
+                {
+                    RefreshCodexBrowserTimelineFromContent();
+                }
                 if (!string.IsNullOrEmpty(value) && !HasReasoning)
                 {
                     _isThinking = false;
@@ -124,7 +558,42 @@ namespace Nexus.App.ViewModels
             }
         }
 
-        public bool HasReasoning => !string.IsNullOrEmpty(_reasoningContent);
+        public bool IsBrowserAgentCollapsibleCard
+        {
+            get => _isBrowserAgentCollapsibleCard;
+            set
+            {
+                if (SetProperty(ref _isBrowserAgentCollapsibleCard, value))
+                {
+                    OnPropertyChanged(nameof(HasReasoning));
+                }
+            }
+        }
+
+        public bool HasReasoning => !string.IsNullOrEmpty(_reasoningContent) || _isBrowserAgentCollapsibleCard || HasCodexBrowserSteps;
+
+        public string GetEffectiveDisplayMarkdown()
+        {
+            string raw = _content ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(raw))
+                return raw;
+
+            // Codex Timeline Replacement Rule: Always strip the legacy `> ...` checklist blockquote and `### Kartu Sumber Terverifikasi` table
+            // because steps are rendered exclusively inside the interactive CodexBrowserSteps timeline!
+            if (_isBrowserAgentCollapsibleCard || HasCodexBrowserSteps ||
+                Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.IsBrowserAgentStatusMessage(raw))
+            {
+                raw = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.StripBrowserAgentStatusAndSourceTable(raw);
+            }
+
+            // Argon Single-Surface Rule (Anti-Dobel): When HasCanvasCard is active, strip the code block / report body from the upper chat bubble!
+            if (_hasCanvasCard && _canvasArtifact is not null && !_isBrowserAgentCollapsibleCard)
+            {
+                return Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.StripCanvasBodyFromChatMarkdown(raw, _canvasArtifact);
+            }
+
+            return raw;
+        }
 
         public bool IsUser => Role.Equals("user", StringComparison.OrdinalIgnoreCase);
         public bool IsAssistant => Role.Equals(
@@ -140,7 +609,7 @@ namespace Nexus.App.ViewModels
         public bool IsThinking
         {
             get => _isThinking;
-            internal set
+            set
             {
                 if (SetProperty(ref _isThinking, value))
                 {
@@ -159,7 +628,16 @@ namespace Nexus.App.ViewModels
         public bool IsThinkingCollapsed
         {
             get => _isThinkingCollapsed;
-            set => SetProperty(ref _isThinkingCollapsed, value);
+            set
+            {
+                if (SetProperty(ref _isThinkingCollapsed, value))
+                {
+                    if (_isBrowserAgentCollapsibleCard && _lastParser is not null)
+                    {
+                        ApplyFinalDocument(_lastParser.Parse(GetEffectiveDisplayMarkdown(), _lastIncludeCodeHeuristic));
+                    }
+                }
+            }
         }
 
         public ObservableCollection<AttachmentChipViewModel> Attachments { get; } = new();
@@ -168,7 +646,7 @@ namespace Nexus.App.ViewModels
         public bool IsError
         {
             get => _isError;
-            private set
+            set
             {
                 if (SetProperty(ref _isError, value))
                 {
@@ -182,7 +660,7 @@ namespace Nexus.App.ViewModels
         public bool IsStreaming
         {
             get => _isStreaming;
-            private set
+            set
             {
                 if (SetProperty(ref _isStreaming, value))
                 {
@@ -306,12 +784,22 @@ namespace Nexus.App.ViewModels
             NexusMessageParser parser,
             bool includeCodeHeuristic)
         {
+            _lastParser = parser;
+            _lastIncludeCodeHeuristic = includeCodeHeuristic;
+            if (IsAssistant)
+            {
+                RefreshCanvasCardFromContent(isStreamingNow: IsStreaming);
+            }
             ApplyFinalDocument(
-                parser.Parse(Content, includeCodeHeuristic));
+                parser.Parse(GetEffectiveDisplayMarkdown(), includeCodeHeuristic));
         }
 
         internal void ApplyFinalDocument(object document)
         {
+            if (IsAssistant)
+            {
+                RefreshCanvasCardFromContent(isStreamingNow: IsStreaming);
+            }
             lock (_renderSync)
             {
                 _renderVersion++;
@@ -326,9 +814,9 @@ namespace Nexus.App.ViewModels
             IsError = true;
         }
 
-        internal void SetStreaming(bool isStreaming) => SetStreaming(isStreaming, hasAttachments: false);
+        public void SetStreaming(bool isStreaming) => SetStreaming(isStreaming, hasAttachments: false);
 
-        internal void SetStreaming(bool isStreaming, bool hasAttachments)
+        public void SetStreaming(bool isStreaming, bool hasAttachments)
         {
             IsStreaming = isStreaming;
             if (isStreaming)
@@ -342,9 +830,12 @@ namespace Nexus.App.ViewModels
             }
         }
 
-        internal void StartThinking(bool hasAttachments)
+        public void StartThinking(bool hasAttachments)
         {
-            if (!string.IsNullOrWhiteSpace(_thinkingDurationText) && _thinkingDurationText.StartsWith("✓ Ran ", StringComparison.Ordinal))
+            if (_isBrowserAgentCollapsibleCard ||
+                (!string.IsNullOrWhiteSpace(_thinkingDurationText) &&
+                 (_thinkingDurationText.StartsWith("✓ Ran ", StringComparison.Ordinal) ||
+                  _thinkingDurationText.StartsWith("⚠ Ran ", StringComparison.Ordinal))))
             {
                 _isThinking = false;
                 OnPropertyChanged(nameof(IsThinking));
@@ -430,7 +921,7 @@ namespace Nexus.App.ViewModels
             UpdateThinkingStatusText();
         }
 
-        internal void StopThinking()
+        public void StopThinking()
         {
             _isThinking = false;
             OnPropertyChanged(nameof(IsThinking));
@@ -2933,11 +3424,13 @@ namespace Nexus.App.ViewModels
             string userStatePrompt,
             System.Threading.CancellationToken ct)
         {
-            // 1. If a Cloud model is selected (or Gemini key is configured and local runtime is not active), use Gemini Cloud JSON step planner
-            try
+            // Strict Model Selection Policy (Batch A):
+            // - If the user explicitly selected a Cloud model ("cloud:..."), execute on Gemini Cloud and NEVER silently fall through to local Gemma.
+            // - If the user explicitly selected a Local model, execute strictly on Local GGUF and NEVER silently call Gemini Cloud.
+            bool isCloudSelected = _selectedModel?.Id?.StartsWith("cloud:", StringComparison.OrdinalIgnoreCase) == true;
+            if (isCloudSelected)
             {
-                bool prefersCloud = _selectedModel?.Id?.StartsWith("cloud:", StringComparison.OrdinalIgnoreCase) == true || !_conversationRuntime.IsReady;
-                if (prefersCloud)
+                try
                 {
                     var keys = LoadEncryptedProviderKeys();
                     if (keys.TryGetValue("gemini", out var encKey))
@@ -2945,67 +3438,76 @@ namespace Nexus.App.ViewModels
                         string apiKey = DecryptSecretMachineBound(encKey);
                         if (!string.IsNullOrWhiteSpace(apiKey))
                         {
-                            string[] models = new[] { "gemini-2.5-flash-lite", "gemini-2.0-flash" };
+                            string[] models = new[] { "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash" };
                             foreach (var m in models)
                             {
-                                try
+                                foreach (bool useSchema in new[] { true, false })
                                 {
-                                    string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent";
-                                    var reqBody = new
+                                    try
                                     {
-                                        system_instruction = new { parts = new[] { new { text = systemPrompt } } },
-                                        contents = new[] { new { role = "user", parts = new[] { new { text = userStatePrompt } } } },
-                                        generationConfig = new
-                                        {
-                                            temperature = 0.1,
-                                            maxOutputTokens = 260,
-                                            responseMimeType = "application/json",
-                                            responseSchema = new
+                                        string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent";
+                                        object genCfg = useSchema
+                                            ? new
                                             {
-                                                type = "OBJECT",
-                                                properties = new
-                                                {
-                                                    evaluation_previous_goal = new { type = "STRING" },
-                                                    memory = new { type = "STRING" },
-                                                    next_goal = new { type = "STRING" },
-                                                    action = new { type = "STRING" },
-                                                    element_index = new { type = "INTEGER", nullable = true },
-                                                    text_or_url = new { type = "STRING", nullable = true },
-                                                    press_enter = new { type = "BOOLEAN", nullable = true }
-                                                },
-                                                required = new[] { "evaluation_previous_goal", "memory", "next_goal", "action" }
+                                                temperature = 0.1,
+                                                maxOutputTokens = 512,
+                                                responseMimeType = "application/json",
+                                                responseSchema = Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.BuildGeminiCloudStrictStepResponseSchema()
+                                            }
+                                            : new
+                                            {
+                                                temperature = 0.1,
+                                                maxOutputTokens = 512,
+                                                responseMimeType = "application/json"
+                                            };
+                                        var reqBody = new
+                                        {
+                                            system_instruction = new { parts = new[] { new { text = systemPrompt } } },
+                                            contents = new[] { new { role = "user", parts = new[] { new { text = userStatePrompt } } } },
+                                            generationConfig = genCfg
+                                        };
+                                        using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, endpoint);
+                                        req.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey.Trim());
+                                        req.Content = new System.Net.Http.StringContent(
+                                            System.Text.Json.JsonSerializer.Serialize(reqBody),
+                                            System.Text.Encoding.UTF8,
+                                            "application/json");
+                                        var swCloud = System.Diagnostics.Stopwatch.StartNew();
+                                        using var resp = await _stepPlannerHttp.SendAsync(req, ct);
+                                        if (resp.IsSuccessStatusCode)
+                                        {
+                                            string respJson = await resp.Content.ReadAsStringAsync(ct);
+                                            swCloud.Stop();
+                                            var (cloudOut, cloudTelemetry) = Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.ParseLlamaServerResponseWithTelemetry(
+                                                respJson,
+                                                swCloud.ElapsedMilliseconds,
+                                                $"cloud:{m}");
+                                            if (!string.IsNullOrWhiteSpace(cloudOut))
+                                            {
+                                                Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LastStepInferenceTelemetry = cloudTelemetry;
+                                                return cloudOut;
                                             }
                                         }
-                                    };
-                                    using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, endpoint);
-                                    req.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey.Trim());
-                                    req.Content = new System.Net.Http.StringContent(
-                                        System.Text.Json.JsonSerializer.Serialize(reqBody),
-                                        System.Text.Encoding.UTF8,
-                                        "application/json");
-                                    using var resp = await _stepPlannerHttp.SendAsync(req, ct);
-                                    if (resp.IsSuccessStatusCode)
-                                    {
-                                        string respJson = await resp.Content.ReadAsStringAsync(ct);
-                                        using var doc = System.Text.Json.JsonDocument.Parse(respJson);
-                                        if (doc.RootElement.TryGetProperty("candidates", out var cands) &&
-                                            cands.GetArrayLength() > 0 &&
-                                            cands[0].TryGetProperty("content", out var cont) &&
-                                            cont.TryGetProperty("parts", out var parts) &&
-                                            parts.GetArrayLength() > 0 &&
-                                            parts[0].TryGetProperty("text", out var txtProp))
-                                        {
-                                            return txtProp.GetString() ?? string.Empty;
-                                        }
                                     }
+                                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                                    {
+                                        throw;
+                                    }
+                                    catch { }
                                 }
-                                catch { }
                             }
                         }
                     }
                 }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch { }
+
+                // Do NOT fall through to local Gemma when the user explicitly selected Cloud in the dropdown!
+                return string.Empty;
             }
-            catch { }
 
             // 2. Local GGUF / LlamaServer / Ollama Step Planner with benchmark-calibrated timeout (default 12.0s, clamped 8.0s..18.0s) & balanced JSON detection
             var benchHist = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.BenchmarkHistory;
@@ -3021,6 +3523,56 @@ namespace Nexus.App.ViewModels
             }
             using var localStepCts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
             localStepCts.CancelAfter(TimeSpan.FromSeconds(calibratedTimeoutSec));
+
+            // Call direct GBNF /v1/chat/completions on the single active LlamaServerManager port (never probing Ollama 11434)
+            var runtimeCfg = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+            int activeLlamaPort = Nexus.AI.Llama.Services.LlamaServerManager.ActiveConfiguredPort > 0
+                ? Nexus.AI.Llama.Services.LlamaServerManager.ActiveConfiguredPort
+                : (runtimeCfg.ActiveLlamaServerPort > 0 ? runtimeCfg.ActiveLlamaServerPort : 8080);
+            int[] localPorts = new[] { activeLlamaPort };
+            foreach (int port in localPorts)
+            {
+                try
+                {
+                    string strictGbnfPayloadJson = Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.BuildLlamaServerChatCompletionPayloadJson(
+                        systemPrompt,
+                        userStatePrompt,
+                        temperature: 0.1,
+                        maxTokens: 320,
+                        enablePromptCache: runtimeCfg.EnablePromptCache,
+                        enableThinking: runtimeCfg.EnableLocalModelThinking);
+                    var swLocalHttp = System.Diagnostics.Stopwatch.StartNew();
+                    using var req = new System.Net.Http.HttpRequestMessage(
+                        System.Net.Http.HttpMethod.Post,
+                        $"http://127.0.0.1:{port}/v1/chat/completions")
+                    {
+                        Content = new System.Net.Http.StringContent(
+                            strictGbnfPayloadJson,
+                            System.Text.Encoding.UTF8,
+                            "application/json")
+                    };
+                    using var resp = await _stepPlannerHttp.SendAsync(req, localStepCts.Token);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        string json = await resp.Content.ReadAsStringAsync(localStepCts.Token);
+                        swLocalHttp.Stop();
+                        var (parsedContent, localTelemetry) = Nexus.App.Services.BrowserAgent.BrowserUseDomEngine.ParseLlamaServerResponseWithTelemetry(
+                            json,
+                            swLocalHttp.ElapsedMilliseconds,
+                            $"local:{port}");
+                        runtimeCfg.LastStepInferenceTelemetry = localTelemetry;
+                        if (!string.IsNullOrWhiteSpace(parsedContent))
+                        {
+                            return parsedContent;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch { }
+            }
 
             if (_conversationRuntime.IsReady)
             {
@@ -3056,53 +3608,6 @@ namespace Nexus.App.ViewModels
                     Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.RecordLog(
                         $"Local runtime step planner fallback: {localEx.GetType().Name}: {localEx.Message}");
                 }
-            }
-
-            int[] localPorts = new[] { 8080, 8081, 11434 };
-            foreach (int port in localPorts)
-            {
-                try
-                {
-                    var localPayload = new
-                    {
-                        messages = new[]
-                        {
-                            new { role = "system", content = systemPrompt },
-                            new { role = "user", content = userStatePrompt }
-                        },
-                        temperature = 0.1,
-                        max_tokens = 320,
-                        response_format = new { type = "json_object" },
-                        stream = false
-                    };
-                    using var req = new System.Net.Http.HttpRequestMessage(
-                        System.Net.Http.HttpMethod.Post,
-                        $"http://127.0.0.1:{port}/v1/chat/completions")
-                    {
-                        Content = new System.Net.Http.StringContent(
-                            System.Text.Json.JsonSerializer.Serialize(localPayload),
-                            System.Text.Encoding.UTF8,
-                            "application/json")
-                    };
-                    using var resp = await _stepPlannerHttp.SendAsync(req, localStepCts.Token);
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        string json = await resp.Content.ReadAsStringAsync(localStepCts.Token);
-                        using var doc = System.Text.Json.JsonDocument.Parse(json);
-                        if (doc.RootElement.TryGetProperty("choices", out var choices) &&
-                            choices.GetArrayLength() > 0 &&
-                            choices[0].TryGetProperty("message", out var msg) &&
-                            msg.TryGetProperty("content", out var contentProp))
-                        {
-                            return contentProp.GetString() ?? string.Empty;
-                        }
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch { }
             }
 
             return string.Empty;
@@ -3357,104 +3862,15 @@ namespace Nexus.App.ViewModels
             return string.Join(Environment.NewLine, lines);
         }
 
-        private async Task<string> NormalizeUserTaskWithAiModelAsync(string rawUserTask, System.Threading.CancellationToken ct)
+        private Task<string> NormalizeUserTaskWithAiModelAsync(string rawUserTask, System.Threading.CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(rawUserTask))
-                return string.Empty;
+                return Task.FromResult(string.Empty);
 
+            // Batch A: Never rewrite or flatten multi-clause user tasks into a single URL via a cloud pre-call.
+            // Preserve all clauses ("buka google, buka youtube, cari ...") intact for the Planner-First contract!
             string preNormalized = Nexus.App.Services.BrowserAgent.DynamicReActControlLoop.NormalizeUserTyposAndTerms(rawUserTask);
-            if (preNormalized.Contains("->", StringComparison.Ordinal) || preNormalized.Contains("→", StringComparison.Ordinal))
-            {
-                return preNormalized;
-            }
-
-            var (initialSite, initialInput, _) = Nexus.App.Services.BrowserAgent.DynamicReActControlLoop.AnalyzeUniversalBrowserTask(preNormalized);
-
-            // Batch 1B: If this is a direct site-open command without any search/input keyword (e.g., "buka whatsapp di browser"),
-            // return immediately so the normalizer never fabricates a bogus "?s=WhatsApp Web" search query!
-            bool hasExplicitSearchOrInputVerb = System.Text.RegularExpressions.Regex.IsMatch(
-                preNormalized,
-                @"\b(cari|carikan|telusuri|masukkan|masukan|ketik|ketikkan|isi|tanyakan)\b",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (!string.IsNullOrWhiteSpace(initialSite) && string.IsNullOrWhiteSpace(initialInput) && !hasExplicitSearchOrInputVerb)
-            {
-                return preNormalized;
-            }
-
-            // If we already resolved both a concrete target site and a clean input query (or if no cloud key is active), return immediately for 0ms latency
-            if (!string.IsNullOrWhiteSpace(initialSite) && !string.IsNullOrWhiteSpace(initialInput) && initialSite != "https://www.google.com")
-            {
-                return preNormalized;
-            }
-
-            try
-            {
-                var keys = LoadEncryptedProviderKeys();
-                if (keys.TryGetValue("gemini", out var encKey))
-                {
-                    string apiKey = DecryptSecretMachineBound(encKey);
-                    if (!string.IsNullOrWhiteSpace(apiKey))
-                    {
-                        using var planCts = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        planCts.CancelAfter(TimeSpan.FromSeconds(3.5));
-
-                        string sysInstruction =
-                            "Anda adalah AI Task Planner NEXUS. Perbaiki semua salah ketik (typo) pada perintah pengguna dan ubah menjadi JSON: " +
-                            "{\"target_url\": \"https://...\", \"clean_query\": \"kata kunci bersih tanpa typo\", \"wants_play\": true/false}. " +
-                            "Contoh: 'buka YOUTUBE CARI GURU GEMBRU PLAY VIDEONYA YANG PALING ATAS' -> {\"target_url\": \"https://www.youtube.com\", \"clean_query\": \"Guru Gembul\", \"wants_play\": true}. " +
-                            "Contoh: 'buka web cari gubeneru sumsel' -> {\"target_url\": \"https://www.google.com\", \"clean_query\": \"Gubernur Sumatera Selatan\", \"wants_play\": false}.";
-
-                        string[] models = new[] { "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-3.5-flash-lite" };
-                        foreach (var m in models)
-                        {
-                            try
-                            {
-                                string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent";
-                                var reqBody = new
-                                {
-                                    systemInstruction = new { parts = new[] { new { text = sysInstruction } } },
-                                    contents = new[] { new { role = "user", parts = new[] { new { text = preNormalized } } } },
-                                    generationConfig = new { temperature = 0.0, maxOutputTokens = 140, responseMimeType = "application/json" }
-                                };
-                                using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, endpoint);
-                                req.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey.Trim());
-                                req.Content = new System.Net.Http.StringContent(
-                                    System.Text.Json.JsonSerializer.Serialize(reqBody),
-                                    System.Text.Encoding.UTF8,
-                                    "application/json");
-                                using var resp = await _stepPlannerHttp.SendAsync(req, planCts.Token);
-                                if (resp.IsSuccessStatusCode)
-                                {
-                                    string respJson = await resp.Content.ReadAsStringAsync(planCts.Token);
-                                    string? textJson = ExtractGeminiTextFromJson(respJson);
-                                    if (!string.IsNullOrWhiteSpace(textJson))
-                                    {
-                                        var match = System.Text.RegularExpressions.Regex.Match(textJson, @"\{[\s\S]*\}");
-                                        if (match.Success)
-                                        {
-                                            using var doc = System.Text.Json.JsonDocument.Parse(match.Value);
-                                            var r = doc.RootElement;
-                                            string tUrl = r.TryGetProperty("target_url", out var uProp) ? uProp.GetString() ?? "" : "";
-                                            string cQuery = r.TryGetProperty("clean_query", out var qProp) ? qProp.GetString() ?? "" : "";
-                                            bool wPlay = r.TryGetProperty("wants_play", out var pProp) && pProp.ValueKind == System.Text.Json.JsonValueKind.True;
-                                            if (!string.IsNullOrWhiteSpace(tUrl) && !string.IsNullOrWhiteSpace(cQuery))
-                                            {
-                                                string suffix = wPlay ? " dan play" : "";
-                                                return $"buka {tUrl} masukkan di pencarian \"{cQuery}\"{suffix}";
-                                            }
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                            catch { }
-                        }
-                    }
-                }
-            }
-            catch { }
-
-            return preNormalized;
+            return Task.FromResult(preNormalized);
         }
 
         public static bool IsConversationalQuestionWithoutWebAction(string? userPrompt)
@@ -3465,7 +3881,14 @@ namespace Nexus.App.ViewModels
             string lower = userPrompt.Trim().ToLowerInvariant();
             if (System.Text.RegularExpressions.Regex.IsMatch(
                 lower,
-                @"^(apa\s+saja\s+yang\s+bisa|apakah\s+kamu\s+bisa|oke\s+bisa\s+gunak|bisa\s+gunakan\s+browser|sepertinya\s+ini\s+dari\s+nexus|kenapa\s+berhenti|bisa\s+diakali|halo\b|hai\b|terima\s+kasih|gemini\s+bisa\s+bantu)"))
+                @"^(apa\s+saja\s+yang\s+bisa|apakah\s+kamu\s+bisa|oke\s+bisa\s+gunak|bisa\s+gunakan\s+browser|sepertinya\s+ini\s+dari\s+nexus|kenapa\s+|mengapa\s+|tetapi\s+saya\s+lihat|tapi\s+saya\s+lihat|kamu\s+salah|bisa\s+diakali|halo\b|hai\b|terima\s+kasih|gemini\s+bisa\s+bantu)"))
+            {
+                return true;
+            }
+
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                lower,
+                @"\b(bukan\s+kamu\s+yang\s+mengerjakan|melainkan\s+model\s+lokal|apakah\s+model\s+lokal|cari\s+ta(?:h)?u\s+penyebab|cari\s+ta(?:h)?u\s+kesalahan|kenapa\s+kamu\s+lambat|salah\s+menagam|salah\s+menangani)\b"))
             {
                 return true;
             }
@@ -3612,15 +4035,24 @@ namespace Nexus.App.ViewModels
                 return true;
             }
 
-            // 4. Check Universal Browser Interaction / Navigation / Input / Search Tasks (Typo-Tolerant + AI-First)
+            // 4. Check Universal Browser Interaction / Navigation / Input / Search Tasks + Cross-Turn Continuity (Typo-Tolerant + AI-First)
             string normalizedPrompt = Nexus.App.Services.BrowserAgent.DynamicReActControlLoop.NormalizeUserTyposAndTerms(userPrompt);
             var (resolvedSiteUrl, extractedInputText, _) = Nexus.App.Services.BrowserAgent.DynamicReActControlLoop.AnalyzeUniversalBrowserTask(normalizedPrompt);
+            var rtCfg = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+            bool hasActiveBrowserOrCarryForward =
+                !string.IsNullOrWhiteSpace(AgentWorkspace?.LastBrowserUrl) ||
+                !string.IsNullOrWhiteSpace(rtCfg.CurrentUrl) ||
+                !string.IsNullOrWhiteSpace(rtCfg.CarryForward.LastActiveUrl) ||
+                rtCfg.CarryForward.NumberedCandidates.Count > 0 ||
+                rtCfg.CarryForward.ExtractedFacts.Count > 0;
+            bool isCarryForwardTurn = hasActiveBrowserOrCarryForward &&
+                Nexus.App.Services.BrowserAgent.VerifiedCarryForwardStore.IsCrossTurnContinuationPrompt(normalizedPrompt);
             bool mentionsExplicitWebCommand = System.Text.RegularExpressions.Regex.IsMatch(
                 normalizedPrompt,
                 @"(?:^|\b)(?:bukahttps?://|masuk\s+ke\s+web|ketik\s+di\s+browser|masukk?an\s+input|masukk?an\s+di\s+pencarian|input\s+di\s+telusuri|isi\s+(?:di\s+)?kolom|isi\s+input|buka\s+situs|buka\s+web|buka\s+browser|buka\s+halaman|buka\s+youtube|buka\s+google|buka\s+wa\b|buka\s+whatsapp|buka\s+chatgpt|buka\s+gemini|klik\s+tombol|carikan\s+nama|cari\s+nama|cari\s+di\s+web|cari\s+.*?\s+di\s+web|telusuri\s+di|play\s+video)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            if (!string.IsNullOrWhiteSpace(resolvedSiteUrl) || !string.IsNullOrWhiteSpace(extractedInputText) || mentionsExplicitWebCommand)
+            if (!string.IsNullOrWhiteSpace(resolvedSiteUrl) || !string.IsNullOrWhiteSpace(extractedInputText) || mentionsExplicitWebCommand || isCarryForwardTurn)
             {
                 _ = ExecuteDynamicBrowserLoopWithLiveChatAsync(assistantMessage, userPrompt);
                 return true;
@@ -3890,6 +4322,10 @@ namespace Nexus.App.ViewModels
                 var ct = _browserAgentCts.Token;
 
                 Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LiveLlmStepPlannerCaller = QueryActiveLlmForBrowserStepAsync;
+                Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.CancelActiveAgentRunCallback = () =>
+                {
+                    try { _browserAgentCts?.Cancel(); } catch { }
+                };
 
                 var workspaceVm = AgentWorkspace ?? new AgentWorkspaceViewModel();
                 workspaceVm.IsOpen = true;
@@ -3919,9 +4355,9 @@ namespace Nexus.App.ViewModels
                         latestStepHeader = liveMarkdown;
                         try
                         {
-                            assistantMessage.ReasoningContent = FormatPlainTextReasoningDrawer(liveMarkdown);
-                            assistantMessage.ThinkingDurationText = $"● Menjalankan langkah {Math.Min(liveUpdateTick, 12)} · {runSw.Elapsed.TotalSeconds:F1}s";
-                            assistantMessage.IsThinkingCollapsed = true;
+                            assistantMessage.IsBrowserAgentCollapsibleCard = true;
+                            assistantMessage.ReasoningContent = string.Empty;
+                            assistantMessage.ThinkingDurationText = $"● Menjalankan langkah {Math.Min(liveUpdateTick, 25)} · {runSw.Elapsed.TotalSeconds:F1}s";
                         }
                         catch { }
                         UpdateAssistantBubbleLive(assistantMessage, liveMarkdown);
@@ -3954,13 +4390,14 @@ namespace Nexus.App.ViewModels
                 runSw.Stop();
                 try
                 {
-                    int actionsDone = Math.Max(1, summary.Benchmark.ActionsExecuted);
+                        int actionsDone = Math.Max(1, summary.Benchmark.ActionsExecuted);
                     int stepsDone = summary.ChecklistCompletedCount;
                     int stepsTotal = Math.Max(1, summary.ChecklistTotalCount);
                     string statusPrefix = summary.IsSuccess ? "✓" : "⚠";
                     string statusVerb = summary.IsSuccess ? "done" : "berhenti prematur";
-                    assistantMessage.ReasoningContent = FormatPlainTextReasoningDrawer(summary.FinalGroundedReportMarkdown);
-                    assistantMessage.ThinkingDurationText = $"{statusPrefix} Ran {actionsDone} browser actions · {stepsDone}/{stepsTotal} {statusVerb} · {Math.Max(0.8, runSw.Elapsed.TotalSeconds):F1}s";
+                    string finalHeaderText = $"{statusPrefix} Ran {actionsDone} browser actions · {stepsDone}/{stepsTotal} {statusVerb} · {Math.Max(0.8, runSw.Elapsed.TotalSeconds):F1}s";
+                    assistantMessage.LockCodexBrowserTimelineFromMarkdown(summary.FinalGroundedReportMarkdown, finalHeaderText);
+                    assistantMessage.ReasoningContent = string.Empty;
                     assistantMessage.IsThinkingCollapsed = true;
                 }
                 catch { }
@@ -3971,36 +4408,34 @@ namespace Nexus.App.ViewModels
                     _lastSessionCandidates.AddRange(summary.VerifiedSources);
                 }
 
-                bool wantsTextSynthesis = System.Text.RegularExpressions.Regex.IsMatch(
-                    userTask ?? string.Empty,
-                    @"\b(rangkum|ringkas|jelaskan|siapa|apa\s+itu|berapa|resep|cara\s+membuat|analisis|kesimpulan)\b",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 bool canStreamModel = (_selectedModel?.Id?.StartsWith("cloud:", StringComparison.OrdinalIgnoreCase) == true) || _conversationRuntime.IsReady;
-                if (canStreamModel && summary.IsSuccess && wantsTextSynthesis)
+                if (canStreamModel && summary.IsSuccess)
                 {
-                    // Keep the checklist inside the collapsible header (ReasoningContent / "✓ Ran N browser actions · N done")
-                    // and keep Content clean for the AI model's final synthesis (matching image_29415f.jpg 1:1)!
+                    // Keep the Codex timeline locked at the top of the message and let the active AI model
+                    // generate the natural closing paragraph + link purely from the AI model (1:1 Codex style, zero hardcoded table)!
                     UpdateAssistantBubbleLive(assistantMessage, string.Empty);
 
-                    // Strip the step log header from the context sent to the LLM so the LLM never duplicates "Log Eksekusi:" at the bottom!
-                    string pageContextOnly = summary.FinalGroundedReportMarkdown ?? string.Empty;
-                    int contentIdx = pageContextOnly.IndexOf("### ", StringComparison.Ordinal);
-                    if (contentIdx >= 0)
-                    {
-                        pageContextOnly = pageContextOnly[contentIdx..].Trim();
-                    }
+                    string activeTitle = summary.VerifiedSources.FirstOrDefault()?.Title
+                        ?? workspaceVm.LastBrowserTitle
+                        ?? workspaceVm.LastBrowserUrl
+                        ?? "Halaman Web";
+                    string activeUrl = !string.IsNullOrWhiteSpace(workspaceVm.LastBrowserUrl)
+                        ? workspaceVm.LastBrowserUrl
+                        : (summary.VerifiedSources.FirstOrDefault()?.Url ?? string.Empty);
+                    string pageContextOnly = Nexus.App.Services.BrowserAgent.NexusCanvasExporterAndExtractor.StripBrowserAgentStatusAndSourceTable(
+                        summary.FinalGroundedReportMarkdown ?? string.Empty);
 
                     var payloadMessages = new List<Nexus.AI.Llama.Models.ChatMessagePayload>
                     {
                         new Nexus.AI.Llama.Models.ChatMessagePayload
                         {
                             Role = "system",
-                            Content = "[NEXUS_V24_SYNTHESIS_PASS] Anda adalah asisten Web-Augmented AI NEXUS. Browser Agent telah selesai menjalankan aksi di Panel Kanan dan daftar langkahnya sudah ditampilkan di bagian atas pesan. Tugas Anda sekarang adalah langsung menyajikan hasil, jawaban, atau informasi tautan dari halaman aktif di bawah ini secara rapi, ringkas, dan jelas dalam Bahasa Indonesia. PENTING: JANGAN menulis ulang bagian 'Log Eksekusi' atau mengulang daftar Langkah 1/Langkah 2."
+                            Content = "[NEXUS_V24_SYNTHESIS_PASS] Anda adalah asisten AI interaktif NEXUS. Browser Agent telah selesai menjalankan aksi di Panel Kanan dan timeline langkahnya sudah ditampilkan di bagian atas pesan. Tugas Anda sekarang adalah menuliskan kalimat penutup yang alami, langsung, dan ringkas dalam Bahasa Indonesia (seperti gaya asisten Codex) yang mengonfirmasi hasil akhir sesuai permintaan pengguna beserta tautan markdown langsung ke halaman/media aktif (misalnya: [Buka di YouTube](URL) atau [Buka Halaman](URL)). Jika pengguna meminta rangkuman atau penjelasan isi halaman, sajikan rangkuman tersebut secara rapi. PENTING: JANGAN membuat tabel 'Kartu Sumber Terverifikasi', JANGAN mengulang daftar langkah 1/2/3, dan JANGAN membungkus jawaban biasa dalam blok kode kecuali pengguna meminta kode."
                         },
                         new Nexus.AI.Llama.Models.ChatMessagePayload
                         {
                             Role = "user",
-                            Content = $"URL Aktif: {workspaceVm.LastBrowserUrl}\r\n{pageContextOnly}\r\n\r\nPermintaan Pengguna: {userTask}"
+                            Content = $"Judul Halaman/Media Aktif: {activeTitle}\r\nURL Aktif: {activeUrl}\r\nKonteks Halaman:\r\n{pageContextOnly}\r\n\r\nPermintaan Pengguna: {userTask}"
                         }
                     };
 
@@ -4015,7 +4450,7 @@ namespace Nexus.App.ViewModels
                 }
 
                 UpdateAssistantBubbleLive(assistantMessage, summary.FinalGroundedReportMarkdown, isStreaming: false);
-                await PersistInstantExchangeAsync(userTask, assistantMessage.Content ?? string.Empty);
+                await PersistInstantExchangeAsync(userTask, assistantMessage.GetPersistedContentWithBrowserTimelineHeader());
                 return summary;
             }
             catch (Exception ex)
@@ -4338,6 +4773,7 @@ namespace Nexus.App.ViewModels
                 cfg.CurrentPageTitle = string.Empty;
                 cfg.CurrentAgentActivity = "Idle";
                 cfg.TakeTheWheel.ReleaseToBot();
+                cfg.CarryForward.Clear();
 
                 if (AgentWorkspace is not null)
                 {
@@ -4498,8 +4934,8 @@ namespace Nexus.App.ViewModels
             {
                 SetActiveAgentPresetIndex(0);
                 var cfg = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
-                cfg.MaxActionsPerTask = 8;
-                cfg.MaxPagesPerTask = 5;
+                cfg.MaxActionsPerTask = 25;
+                cfg.MaxPagesPerTask = 12;
                 cfg.MaxContextTokens = 650;
                 cfg.DefaultSearchProvider = "web";
                 ActiveAgentPresetBadge = "Standard mode (default)";
@@ -8237,7 +8673,10 @@ namespace Nexus.App.ViewModels
             _generationCancellation = new CancellationTokenSource();
             var cancellation = _generationCancellation;
 
-            if (!string.IsNullOrWhiteSpace(newUserPrompt) && TryInterceptBrowserOrAcademicIntent(assistantMessage, payloadMessages ?? Array.Empty<Nexus.AI.Llama.Models.ChatMessagePayload>(), newUserPrompt))
+            string? effectiveBrowserPrompt = !string.IsNullOrWhiteSpace(newUserPrompt)
+                ? newUserPrompt
+                : payloadMessages?.LastOrDefault(m => string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content;
+            if (!string.IsNullOrWhiteSpace(effectiveBrowserPrompt) && TryInterceptBrowserOrAcademicIntent(assistantMessage, payloadMessages ?? Array.Empty<Nexus.AI.Llama.Models.ChatMessagePayload>(), effectiveBrowserPrompt!))
             {
                 assistantMessage.StopThinking();
                 assistantMessage.IsThinking = false;
@@ -8729,14 +9168,17 @@ namespace Nexus.App.ViewModels
                             {
                                 assistantMessage.StopThinking();
                                 assistantMessage.IsThinking = false;
-                                if (assistantMessage.HasReasoning)
+                                if (!assistantMessage.IsBrowserAgentCollapsibleCard)
                                 {
-                                    assistantMessage.ThinkingDurationText = $"Completed in {thinkingStopwatch.Elapsed.TotalSeconds:F1}s";
-                                    assistantMessage.IsThinkingCollapsed = true;
-                                }
-                                else
-                                {
-                                    assistantMessage.ThinkingDurationText = string.Empty;
+                                    if (assistantMessage.HasReasoning)
+                                    {
+                                        assistantMessage.ThinkingDurationText = $"Completed in {thinkingStopwatch.Elapsed.TotalSeconds:F1}s";
+                                        assistantMessage.IsThinkingCollapsed = true;
+                                    }
+                                    else
+                                    {
+                                        assistantMessage.ThinkingDurationText = string.Empty;
+                                    }
                                 }
                             }
 
@@ -8752,11 +9194,12 @@ namespace Nexus.App.ViewModels
                     {
                         assistantMessage.StopThinking();
                         assistantMessage.IsThinking = false;
-                        if (assistantMessage.HasReasoning)
+                        if (assistantMessage.HasReasoning && !assistantMessage.IsBrowserAgentCollapsibleCard)
                         {
                             assistantMessage.ThinkingDurationText = $"✓ Selesai · {thinkingStopwatch.Elapsed.TotalSeconds:F1}s";
                         }
                     }
+                    assistantMessage.SetStreaming(false);
                 });
 
                 await RenderFinalAsync(assistantMessage);
@@ -8771,7 +9214,7 @@ namespace Nexus.App.ViewModels
                         attachmentReferences);
                     await _conversationManager.AddMessageAsync(
                         "assistant",
-                        assistantMessage.Content);
+                        assistantMessage.GetPersistedContentWithBrowserTimelineHeader());
                     if (AiCheck is not null && AgentWorkspace is not null && _projectRead is not null)
                     {
                         AutoLearnAndCurateHermesMemory(newUserPrompt, assistantMessage.Content, "chat");
@@ -9019,8 +9462,9 @@ namespace Nexus.App.ViewModels
             _ = Task.Run(async () =>
             {
                 await Task.Delay(60);
+                await InvokeOnUiDispatcherAsync(() => message.RefreshCanvasCardFromContent(isStreamingNow: true));
                 var document = _messageParser.Parse(
-                    message.Content,
+                    message.GetEffectiveDisplayMarkdown(),
                     includeCodeHeuristic: false);
                 await InvokeOnUiDispatcherAsync(() =>
                     message.CompleteScheduledRender(
@@ -9029,16 +9473,20 @@ namespace Nexus.App.ViewModels
             });
         }
 
-        private Task RenderFinalAsync(ChatMessageItemViewModel message)
+        private async Task RenderFinalAsync(ChatMessageItemViewModel message)
         {
+            await InvokeOnUiDispatcherAsync(() =>
+            {
+                message.RefreshCanvasCardFromContent(isStreamingNow: false);
+            });
             var document = _messageParser.Parse(
-                message.Content,
+                message.GetEffectiveDisplayMarkdown(),
                 includeCodeHeuristic: true);
             var choiceBlock = document.Blocks
                 .OfType<ChoiceBlock>()
                 .LastOrDefault();
 
-            return InvokeOnUiDispatcherAsync(() =>
+            await InvokeOnUiDispatcherAsync(() =>
             {
                 message.ApplyFinalDocument(document);
                 if (choiceBlock != null)

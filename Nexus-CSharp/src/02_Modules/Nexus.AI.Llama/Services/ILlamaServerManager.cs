@@ -8,6 +8,7 @@ namespace Nexus.AI.Llama.Services
         ServerState State { get; }
         int? OwnedPid { get; }
         string? RuntimeModelPath { get; }
+        int ActivePort => 8080;
         void Initialize(string engineDir, int port = 8080);
         string ResolveEngineDir();
         string DetectBackend();

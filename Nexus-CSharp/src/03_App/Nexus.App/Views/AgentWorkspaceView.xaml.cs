@@ -107,6 +107,32 @@ public partial class AgentWorkspaceView : UserControl
 
     private void Model_Changed(object? sender,PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(AgentWorkspaceViewModel.LastBrowserUrl))
+        {
+            string updatedUrl = observed?.LastBrowserUrl ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(updatedUrl) && updatedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    try
+                    {
+                        var rtShow = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+                        rtShow.CurrentUrl = updatedUrl;
+                        string displayUrl = updatedUrl;
+                        if (!rtShow.AdGuardConfig.ShowFullUrlInAddressBar && Uri.TryCreate(updatedUrl, UriKind.Absolute, out var parsedU))
+                        {
+                            displayUrl = parsedU.Host;
+                        }
+                        if (BrowserAddressBox is not null && !BrowserAddressBox.IsKeyboardFocused)
+                        {
+                            BrowserAddressBox.Text = displayUrl;
+                        }
+                    }
+                    catch { }
+                });
+            }
+            return;
+        }
         if(e.PropertyName is nameof(AgentWorkspaceViewModel.SelectedReviewFile) or nameof(AgentWorkspaceViewModel.ReviewFiles))
         {
             if (observed?.SelectedReviewFile is not null && _activeSurface != "Document")
@@ -1193,6 +1219,8 @@ public partial class AgentWorkspaceView : UserControl
             Stretch = System.Windows.Media.Stretch.Uniform,
             Width = size,
             Height = size,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center
         };
@@ -1203,7 +1231,7 @@ public partial class AgentWorkspaceView : UserControl
         return p;
     }
 
-    private System.Windows.Shapes.Path CreateNexusStrokeVectorIcon(string pathData, System.Windows.Media.Brush strokeBrush, double strokeThickness = 1.7, double size = 15, string? strokeResourceKey = null)
+    private System.Windows.Shapes.Path CreateNexusStrokeVectorIcon(string pathData, System.Windows.Media.Brush strokeBrush, double strokeThickness = 1.35, double size = 12.0, string? strokeResourceKey = null)
     {
         var p = new System.Windows.Shapes.Path
         {
@@ -1217,6 +1245,8 @@ public partial class AgentWorkspaceView : UserControl
             Stretch = System.Windows.Media.Stretch.Uniform,
             Width = size,
             Height = size,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center
         };
@@ -3529,6 +3559,7 @@ public partial class AgentWorkspaceView : UserControl
         Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LiveJsEvaluator = ExecuteLiveScriptOnWebView2Async;
         Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.LiveCdpCaller = CallLiveCdpMethodOnWebView2Async;
         Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.ClearBrowserSessionHistoryAsync = ClearWebView2BrowsingHistoryAsync;
+        Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.StopLiveWebView2NavigationCallback = StopLiveWebView2NavigationAsync;
 
         if (_extensionsToolbarAttached) return;
         try
@@ -3609,7 +3640,7 @@ public partial class AgentWorkspaceView : UserControl
 
                 var modernToolbarGrid = new System.Windows.Controls.Grid
                 {
-                    Height = 38,
+                    Height = 32,
                     VerticalAlignment = System.Windows.VerticalAlignment.Center,
                     HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
                     Margin = new System.Windows.Thickness(2, 0, 2, 0)
@@ -3619,14 +3650,15 @@ public partial class AgentWorkspaceView : UserControl
                 modernToolbarGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
                 modernToolbarGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
                 modernToolbarGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+                modernToolbarGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
 
-                // COLUMN 0: Left Navigation Capsule Pill [ ←   →  |  ↻ ]
+                // COLUMN 0: Left Navigation Capsule Pill [ ←   →  |  🏠   ↻ ] (Unified 12px / 1.35 stroke in 30px height capsule)
                 var navCapsuleBorder = new System.Windows.Controls.Border
                 {
-                    Height = 36,
-                    CornerRadius = new System.Windows.CornerRadius(18),
+                    Height = 30,
+                    CornerRadius = new System.Windows.CornerRadius(15),
                     BorderThickness = new System.Windows.Thickness(1),
-                    Padding = new System.Windows.Thickness(6, 0, 6, 0),
+                    Padding = new System.Windows.Thickness(5, 0, 5, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
                 navCapsuleBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
@@ -3639,9 +3671,9 @@ public partial class AgentWorkspaceView : UserControl
 
                 _navBackBtn = new System.Windows.Controls.Button
                 {
-                    Content = CreateNexusStrokeVectorIcon("M 19,12 H 5 M 11,6 L 5,12 L 11,18", textDark, 1.75, 14),
-                    Width = 28,
-                    Height = 28,
+                    Content = CreateNexusStrokeVectorIcon("M 19,12 H 5 M 11,6 L 5,12 L 11,18", textDark, 1.35, 12),
+                    Width = 24,
+                    Height = 24,
                     Background = System.Windows.Media.Brushes.Transparent,
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Back (Alt+Left)"
@@ -3665,9 +3697,9 @@ public partial class AgentWorkspaceView : UserControl
 
                 _navFwdBtn = new System.Windows.Controls.Button
                 {
-                    Content = CreateNexusStrokeVectorIcon("M 5,12 H 19 M 13,6 L 19,12 L 13,18", textDark, 1.75, 14),
-                    Width = 28,
-                    Height = 28,
+                    Content = CreateNexusStrokeVectorIcon("M 5,12 H 19 M 13,6 L 19,12 L 13,18", textDark, 1.35, 12),
+                    Width = 24,
+                    Height = 24,
                     Background = System.Windows.Media.Brushes.Transparent,
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Forward (Alt+Right)"
@@ -3700,13 +3732,13 @@ public partial class AgentWorkspaceView : UserControl
 
                 _navReloadBtn = new System.Windows.Controls.Button
                 {
-                    Content = CreateNexusVectorIcon(
-                        "M 17.65,6.35 C 16.2,4.9 14.21,4 12,4 C 7.58,4 4.01,7.58 4.01,12 C 4.01,16.42 7.58,20 12,20 C 15.73,20 18.84,17.45 19.73,14 H 17.65 C 16.83,16.33 14.61,18 12,18 C 8.69,18 6,15.31 6,12 C 6,8.69 8.69,6 12,6 C 13.66,6 15.14,6.69 16.22,7.78 L 13,11 H 20 V 4 L 17.65,6.35 Z",
-                        "NexusForegroundPrimary",
+                    Content = CreateNexusStrokeVectorIcon(
+                        "M 20,11 A 8,8 0 1 0 18.3,16.5 M 20,5 V 11 H 14",
                         textDark,
-                        15),
-                    Width = 28,
-                    Height = 28,
+                        1.35,
+                        12),
+                    Width = 24,
+                    Height = 24,
                     Background = System.Windows.Media.Brushes.Transparent,
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Reload (F5 / Ctrl+R)"
@@ -3730,32 +3762,51 @@ public partial class AgentWorkspaceView : UserControl
                     catch { }
                 };
 
+                _navHomeBtn = new System.Windows.Controls.Button
+                {
+                    Content = CreateNexusStrokeVectorIcon(
+                        "M 4,10 L 12,3 L 20,10 V 20 A 1,1 0 0 1 19,21 H 14.5 V 14.5 H 9.5 V 21 H 5 A 1,1 0 0 1 4,20 Z",
+                        textDark,
+                        1.35,
+                        12),
+                    Width = 24,
+                    Height = 24,
+                    Margin = new System.Windows.Thickness(0, 0, 2, 0),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Home (https://www.google.com)"
+                };
+                ApplyZeroClipToolbarButtonStyle(_navHomeBtn);
+                _navHomeBtn.Click += (_, _) => NavigateToBrowserHomePage();
+
                 navStack.Children.Add(_navBackBtn);
                 navStack.Children.Add(_navFwdBtn);
                 navStack.Children.Add(navDivider);
+                navStack.Children.Add(_navHomeBtn);
                 navStack.Children.Add(_navReloadBtn);
                 navCapsuleBorder.Child = navStack;
                 System.Windows.Controls.Grid.SetColumn(navCapsuleBorder, 0);
                 modernToolbarGrid.Children.Add(navCapsuleBorder);
 
-                // COLUMN 1: Soft-Gray Pill URL Bar [ Search or enter a URL ]
+                // COLUMN 1: Soft-Gray Pill URL Bar [ Search or enter a URL ] (30px height matching 12px icons)
                 var urlPillBorder = new System.Windows.Controls.Border
                 {
-                    Height = 36,
-                    CornerRadius = new System.Windows.CornerRadius(18),
+                    Height = 30,
+                    CornerRadius = new System.Windows.CornerRadius(15),
                     BorderThickness = new System.Windows.Thickness(1),
-                    Margin = new System.Windows.Thickness(8, 0, 8, 0),
-                    Padding = new System.Windows.Thickness(16, 0, 16, 0),
+                    Margin = new System.Windows.Thickness(6, 0, 6, 0),
+                    Padding = new System.Windows.Thickness(14, 0, 14, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
                 urlPillBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshSidebarBgBrush");
                 urlPillBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
                 addressBox.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "DshTextPrimaryBrush");
+                addressBox.FontSize = 12.5;
                 var urlInnerGrid = new System.Windows.Controls.Grid();
                 var urlPlaceholder = new System.Windows.Controls.TextBlock
                 {
                     Text = "Search or enter a URL",
-                    FontSize = 13.5,
+                    FontSize = 12.5,
                     HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment = System.Windows.VerticalAlignment.Center,
                     IsHitTestVisible = false
@@ -3784,13 +3835,161 @@ public partial class AgentWorkspaceView : UserControl
                 System.Windows.Controls.Grid.SetColumn(urlPillBorder, 1);
                 modernToolbarGrid.Children.Add(urlPillBorder);
 
-                // COLUMN 2: Capsule Pill [ 🛡️   🧩 ]
+                // COLUMN 2 (Batch C + Batch D.1 Collapsible): Agent Control Capsule Pill [ 🛞 ] (30x30 Circle, 100% Centered 12px Icon)
+                _modernTakeWheelPillBorder = new System.Windows.Controls.Border
+                {
+                    Width = 30,
+                    Height = 30,
+                    CornerRadius = new System.Windows.CornerRadius(15),
+                    BorderThickness = new System.Windows.Thickness(1),
+                    Padding = new System.Windows.Thickness(0),
+                    Margin = new System.Windows.Thickness(0, 0, 6, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+                _modernTakeWheelPillBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DshCardBgBrush");
+                _modernTakeWheelPillBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "DshBorderL2Brush");
+
+                var agentCtrlStack = new System.Windows.Controls.StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+
+                _modernAgentControlToggleBtn = new System.Windows.Controls.Button
+                {
+                    Content = CreateNexusStrokeVectorIcon(
+                        "M 12,3 A 9,9 0 1 0 12,21 A 9,9 0 1 0 12,3 Z M 12,9.5 A 2.5,2.5 0 1 0 12,14.5 A 2.5,2.5 0 1 0 12,9.5 Z M 12,3 V 9.5 M 4.2,16.5 L 9.8,13.2 M 19.8,16.5 L 14.2,13.2",
+                        textDark,
+                        1.35,
+                        12),
+                    Width = 28,
+                    Height = 28,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Kontrol Browser Agent (Klik untuk membuka / menutup Take the Wheel, Pause, Stop)"
+                };
+                ApplyZeroClipToolbarButtonStyle(_modernAgentControlToggleBtn);
+                _modernAgentControlToggleBtn.Click += (_, _) => ToggleAgentControlPillExpanded();
+
+                _modernAgentControlInnerDrawer = new System.Windows.Controls.StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center,
+                    Visibility = System.Windows.Visibility.Collapsed
+                };
+
+                var ctrlDiv0 = new System.Windows.Controls.Border
+                {
+                    Width = 1,
+                    Height = 16,
+                    Background = borderSubtle,
+                    Margin = new System.Windows.Thickness(4, 0, 4, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+
+                _modernTakeWheelLabel = new System.Windows.Controls.TextBlock
+                {
+                    Text = "Take the Wheel",
+                    FontSize = 12,
+                    FontWeight = System.Windows.FontWeights.SemiBold,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+                _modernTakeWheelLabel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
+
+                _modernTakeWheelBtn = new System.Windows.Controls.Button
+                {
+                    Content = _modernTakeWheelLabel,
+                    Height = 28,
+                    Padding = new System.Windows.Thickness(6, 0, 6, 0),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Take the Wheel (Ambil alih kendali manual) / Return Control (Kembalikan ke agen)"
+                };
+                ApplyZeroClipToolbarButtonStyle(_modernTakeWheelBtn);
+                _modernTakeWheelBtn.Click += (_, _) => ToggleTakeTheWheelControl();
+
+                var ctrlDiv1 = new System.Windows.Controls.Border
+                {
+                    Width = 1,
+                    Height = 16,
+                    Background = borderSubtle,
+                    Margin = new System.Windows.Thickness(4, 0, 4, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+
+                _modernPauseResumeLabel = new System.Windows.Controls.TextBlock
+                {
+                    Text = "Pause",
+                    FontSize = 12,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+                _modernPauseResumeLabel.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextSecondaryBrush");
+
+                _modernPauseResumeBtn = new System.Windows.Controls.Button
+                {
+                    Content = _modernPauseResumeLabel,
+                    Height = 28,
+                    Padding = new System.Windows.Thickness(6, 0, 6, 0),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Pause / Resume eksekusi Browser Agent"
+                };
+                ApplyZeroClipToolbarButtonStyle(_modernPauseResumeBtn);
+                _modernPauseResumeBtn.Click += (_, _) => TogglePauseResumeAgentControl();
+
+                var ctrlDiv2 = new System.Windows.Controls.Border
+                {
+                    Width = 1,
+                    Height = 16,
+                    Background = borderSubtle,
+                    Margin = new System.Windows.Thickness(4, 0, 4, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+
+                var stopLabelTb = new System.Windows.Controls.TextBlock
+                {
+                    Text = "Stop",
+                    FontSize = 12,
+                    Foreground = coralRed,
+                    FontWeight = System.Windows.FontWeights.SemiBold,
+                    VerticalAlignment = System.Windows.VerticalAlignment.Center
+                };
+                _modernStopAgentBtn = new System.Windows.Controls.Button
+                {
+                    Content = stopLabelTb,
+                    Height = 28,
+                    Padding = new System.Windows.Thickness(6, 0, 8, 0),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Stop eksekusi Browser Agent & navigasi aktif"
+                };
+                ApplyZeroClipToolbarButtonStyle(_modernStopAgentBtn);
+                _modernStopAgentBtn.Click += async (_, _) => await ExecuteStopBrowserAgentToolbarAsync();
+
+                _modernAgentControlInnerDrawer.Children.Add(ctrlDiv0);
+                _modernAgentControlInnerDrawer.Children.Add(_modernTakeWheelBtn);
+                _modernAgentControlInnerDrawer.Children.Add(ctrlDiv1);
+                _modernAgentControlInnerDrawer.Children.Add(_modernPauseResumeBtn);
+                _modernAgentControlInnerDrawer.Children.Add(ctrlDiv2);
+                _modernAgentControlInnerDrawer.Children.Add(_modernStopAgentBtn);
+
+                agentCtrlStack.Children.Add(_modernAgentControlToggleBtn);
+                agentCtrlStack.Children.Add(_modernAgentControlInnerDrawer);
+                _modernTakeWheelPillBorder.Child = agentCtrlStack;
+                System.Windows.Controls.Grid.SetColumn(_modernTakeWheelPillBorder, 2);
+                modernToolbarGrid.Children.Add(_modernTakeWheelPillBorder);
+                SyncTakeTheWheelToolbarButtonsState();
+
+                // COLUMN 3: Capsule Pill [ 🛡️   🧩 ] (30px height, 12px puzzle stroke icon)
                 var extCapsulePill = new System.Windows.Controls.Border
                 {
-                    Height = 36,
-                    CornerRadius = new System.Windows.CornerRadius(18),
+                    Height = 30,
+                    CornerRadius = new System.Windows.CornerRadius(15),
                     BorderThickness = new System.Windows.Thickness(1),
-                    Padding = new System.Windows.Thickness(8, 0, 8, 0),
+                    Padding = new System.Windows.Thickness(6, 0, 6, 0),
                     Margin = new System.Windows.Thickness(0, 0, 6, 0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
@@ -3809,10 +4008,10 @@ public partial class AgentWorkspaceView : UserControl
                         "M 12,2 L 4,5 V 11.09 C 4,16.14 7.41,20.85 12,22 C 16.59,20.85 20,16.14 20,11.09 V 5 L 12,2 Z M 10,17 L 6,13 L 7.41,11.59 L 10,14.17 L 16.59,7.58 L 18,9 L 10,17 Z",
                         "NexusAccentBrush",
                         adGuardGreen,
-                        16.5),
-                    Width = 28,
-                    Height = 28,
-                    Margin = new System.Windows.Thickness(0, 0, 6, 0),
+                        13.5),
+                    Width = 24,
+                    Height = 24,
+                    Margin = new System.Windows.Thickness(0, 0, 4, 0),
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "AdGuard AdBlocker",
                     Background = System.Windows.Media.Brushes.Transparent
@@ -4143,10 +4342,10 @@ public partial class AgentWorkspaceView : UserControl
                     Content = CreateNexusStrokeVectorIcon(
                         "M 10.5,2.5 A 2.2,2.2 0 0 1 12.7,4.7 V 5.5 H 16 A 2,2 0 0 1 18,7.5 V 10.3 H 18.8 A 2.2,2.2 0 0 1 21,12.5 A 2.2,2.2 0 0 1 18.8,14.7 H 18 V 18 A 2,2 0 0 1 16,20 H 12.7 V 19.2 A 2.2,2.2 0 0 0 10.5,17 A 2.2,2.2 0 0 0 8.3,19.2 V 20 H 5 A 2,2 0 0 1 3,18 V 14.7 H 3.8 A 2.2,2.2 0 0 0 6,12.5 A 2.2,2.2 0 0 0 3.8,10.3 H 3 V 7.5 A 2,2 0 0 1 5,5.5 H 8.3 V 4.7 A 2.2,2.2 0 0 1 10.5,2.5 Z",
                         textDark,
-                        1.65,
-                        15.5),
-                    Width = 28,
-                    Height = 28,
+                        1.35,
+                        12),
+                    Width = 24,
+                    Height = 24,
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Extensions",
                     Background = System.Windows.Media.Brushes.Transparent
@@ -4156,7 +4355,7 @@ public partial class AgentWorkspaceView : UserControl
                 extCapsuleStack.Children.Add(_adGuardShieldBtn);
                 extCapsuleStack.Children.Add(puzzleBtn);
                 extCapsulePill.Child = extCapsuleStack;
-                System.Windows.Controls.Grid.SetColumn(extCapsulePill, 2);
+                System.Windows.Controls.Grid.SetColumn(extCapsulePill, 3);
                 modernToolbarGrid.Children.Add(extCapsulePill);
 
                 var extPopupBorder = new System.Windows.Controls.Border
@@ -4231,12 +4430,12 @@ public partial class AgentWorkspaceView : UserControl
                     _extensionsPopup.IsOpen = !_extensionsPopup.IsOpen;
                 };
 
-                // COLUMN 3: Circular Three-Dots Browser Menu Icon [ ⋯ ] (Device toolbar REMOVED as requested!)
+                // COLUMN 4: Circular Three-Dots Browser Menu Icon [ ⋯ ] (30x30 Circle matching Agent Control)
                 var moreMenuPillBorder = new System.Windows.Controls.Border
                 {
-                    Width = 36,
-                    Height = 36,
-                    CornerRadius = new System.Windows.CornerRadius(18),
+                    Width = 30,
+                    Height = 30,
+                    CornerRadius = new System.Windows.CornerRadius(15),
                     BorderThickness = new System.Windows.Thickness(1),
                     Margin = new System.Windows.Thickness(0),
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
@@ -4247,23 +4446,24 @@ public partial class AgentWorkspaceView : UserControl
                 var moreDotsTb = new System.Windows.Controls.TextBlock
                 {
                     Text = "⋯",
-                    FontSize = 16,
+                    FontSize = 14,
                     FontWeight = System.Windows.FontWeights.Bold,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                     VerticalAlignment = System.Windows.VerticalAlignment.Center
                 };
                 moreDotsTb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "DshTextPrimaryBrush");
                 var moreMenuBtn = new System.Windows.Controls.Button
                 {
                     Content = moreDotsTb,
-                    Width = 34,
-                    Height = 34,
+                    Width = 28,
+                    Height = 28,
                     Cursor = System.Windows.Input.Cursors.Hand,
                     ToolTip = "Menu Browser (Find, Print, Zoom, Downloads, History, Clear Data, Browser Settings)",
                     Background = System.Windows.Media.Brushes.Transparent
                 };
                 ApplyZeroClipToolbarButtonStyle(moreMenuBtn);
                 moreMenuPillBorder.Child = moreMenuBtn;
-                System.Windows.Controls.Grid.SetColumn(moreMenuPillBorder, 3);
+                System.Windows.Controls.Grid.SetColumn(moreMenuPillBorder, 4);
                 modernToolbarGrid.Children.Add(moreMenuPillBorder);
 
                 var morePopupBorder = new System.Windows.Controls.Border
@@ -4450,8 +4650,8 @@ public partial class AgentWorkspaceView : UserControl
             if (_navReloadBtn is not null)
             {
                 _navReloadBtn.Content = isLoading
-                    ? CreateNexusVectorIcon("M 19,6.41 L 17.59,5 L 12,10.59 L 6.41,5 L 5,6.41 L 10.59,12 L 5,17.59 L 6.41,19 L 12,13.41 L 17.59,19 L 19,17.59 L 13.41,12 L 19,6.41 Z", "NexusForegroundPrimary", textDark, 14)
-                    : CreateNexusVectorIcon("M 17.65,6.35 C 16.2,4.9 14.21,4 12,4 C 7.58,4 4.01,7.58 4.01,12 C 4.01,16.42 7.58,20 12,20 C 15.73,20 18.84,17.45 19.73,14 H 17.65 C 16.83,16.33 14.61,18 12,18 C 8.69,18 6,15.31 6,12 C 6,8.69 8.69,6 12,6 C 13.66,6 15.14,6.69 16.22,7.78 L 13,11 H 20 V 4 L 17.65,6.35 Z", "NexusForegroundPrimary", textDark, 15);
+                    ? CreateNexusStrokeVectorIcon("M 18,6 L 6,18 M 6,6 L 18,18", textDark, 1.35, 12)
+                    : CreateNexusStrokeVectorIcon("M 20,11 A 8,8 0 1 0 18.3,16.5 M 20,5 V 11 H 14", textDark, 1.35, 12);
             }
             if (coreWv is not null)
             {
@@ -4462,6 +4662,212 @@ public partial class AgentWorkspaceView : UserControl
             }
         }
         catch { }
+    }
+
+
+
+    private System.Windows.Controls.Button? _navHomeBtn;
+    private System.Windows.Controls.Border? _modernTakeWheelPillBorder;
+    private System.Windows.Controls.Button? _modernAgentControlToggleBtn;
+    private System.Windows.Controls.StackPanel? _modernAgentControlInnerDrawer;
+    private System.Windows.Controls.Button? _modernTakeWheelBtn;
+    private System.Windows.Controls.TextBlock? _modernTakeWheelLabel;
+    private System.Windows.Controls.Button? _modernPauseResumeBtn;
+    private System.Windows.Controls.TextBlock? _modernPauseResumeLabel;
+    private System.Windows.Controls.Button? _modernStopAgentBtn;
+    private bool _isAgentControlDrawerExpanded;
+
+    public bool IsAgentControlDrawerExpanded => _isAgentControlDrawerExpanded;
+
+    private void BrowserHome_Click(object sender, RoutedEventArgs e)
+        => NavigateToBrowserHomePage();
+
+    private void BrowserAgentControlToggle_Click(object sender, RoutedEventArgs e)
+        => ToggleAgentControlPillExpanded();
+
+    public void NavigateToBrowserHomePage()
+    {
+        try
+        {
+            string homeUrl = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.HomePageUrl;
+            if (string.IsNullOrWhiteSpace(homeUrl))
+                homeUrl = "https://www.google.com";
+            if (BrowserAddressBox is not null)
+                BrowserAddressBox.Text = homeUrl;
+            UpdateActiveBrowserTabInPlace("Google", homeUrl);
+            _ = NavigateEmbeddedBrowserAsync(homeUrl, pushHistory: true);
+        }
+        catch { }
+    }
+
+    public void ToggleAgentControlPillExpanded()
+    {
+        _isAgentControlDrawerExpanded = !_isAgentControlDrawerExpanded;
+        SyncTakeTheWheelToolbarButtonsState();
+    }
+
+    private void BrowserTakeTheWheel_Click(object sender, RoutedEventArgs e)
+        => ToggleTakeTheWheelControl();
+
+    private void BrowserPauseResume_Click(object sender, RoutedEventArgs e)
+        => TogglePauseResumeAgentControl();
+
+    private async void BrowserStopAgent_Click(object sender, RoutedEventArgs e)
+        => await ExecuteStopBrowserAgentToolbarAsync();
+
+    public void ToggleTakeTheWheelControl()
+    {
+        var rt = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+        var wheel = rt.TakeTheWheel;
+        if (string.Equals(wheel.Holder, "human", StringComparison.OrdinalIgnoreCase))
+        {
+            wheel.ReleaseControlBackToBot();
+            rt.CurrentAgentActivity = "Resumed (Fresh Snapshot Required)";
+            rt.RecordLog("TakeTheWheel UI -> Return Control (Holder=bot, ResumeSnapshotRequired=true)");
+        }
+        else
+        {
+            string curUrl = BrowserAddressBox?.Text ?? rt.CurrentUrl;
+            wheel.RequestHumanHelp("Pengguna menekan Take the Wheel di toolbar Browser Panel Kanan.", curUrl);
+            rt.CurrentAgentActivity = "Human Takeover Active (Take the Wheel)";
+            rt.RecordLog("TakeTheWheel UI -> Take the Wheel (Holder=human, Barrier=Closed)");
+        }
+        SyncTakeTheWheelToolbarButtonsState();
+    }
+
+    public void TogglePauseResumeAgentControl()
+    {
+        var rt = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+        var wheel = rt.TakeTheWheel;
+        if (string.Equals(wheel.Holder, "human", StringComparison.OrdinalIgnoreCase))
+        {
+            wheel.ReleaseControlBackToBot();
+            rt.CurrentAgentActivity = "Resumed (Fresh Snapshot Required)";
+            rt.RecordLog("PauseResume UI -> Resume (Holder=bot, ResumeSnapshotRequired=true)");
+        }
+        else
+        {
+            string curUrl = BrowserAddressBox?.Text ?? rt.CurrentUrl;
+            wheel.RequestHumanHelp("Eksekusi agen dijeda oleh pengguna melalui tombol Pause di toolbar.", curUrl);
+            rt.CurrentAgentActivity = "Paused by user";
+            rt.RecordLog("PauseResume UI -> Pause (Holder=human, Barrier=Closed)");
+        }
+        SyncTakeTheWheelToolbarButtonsState();
+    }
+
+    public async Task<Nexus.Contracts.BrowserAgent.BrowserActionOutcome> ExecuteStopBrowserAgentToolbarAsync()
+    {
+        var adapter = new Nexus.App.Services.BrowserAgent.WebView2NativeAdapter(DataContext as AgentWorkspaceViewModel);
+        var res = await adapter.StopAsync();
+        await StopLiveWebView2NavigationAsync();
+        SyncTakeTheWheelToolbarButtonsState();
+        return res;
+    }
+
+    public void SyncTakeTheWheelToolbarButtonsState()
+    {
+        try
+        {
+            var wheel = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current.TakeTheWheel;
+            bool humanHasControl = string.Equals(wheel.Holder, "human", StringComparison.OrdinalIgnoreCase);
+            string wheelText = humanHasControl ? "Return Control" : "Take the Wheel";
+            string pauseText = humanHasControl ? "Resume" : "Pause";
+
+            if (BrowserTakeTheWheelText is not null)
+                BrowserTakeTheWheelText.Text = wheelText;
+            if (BrowserPauseResumeText is not null)
+                BrowserPauseResumeText.Text = pauseText;
+            if (_modernTakeWheelLabel is not null)
+                _modernTakeWheelLabel.Text = wheelText;
+            if (_modernPauseResumeLabel is not null)
+                _modernPauseResumeLabel.Text = pauseText;
+
+            bool shouldShowDrawer = _isAgentControlDrawerExpanded || humanHasControl;
+            var drawerVis = shouldShowDrawer ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+            if (_modernAgentControlInnerDrawer is not null)
+                _modernAgentControlInnerDrawer.Visibility = drawerVis;
+            if (BrowserAgentControlCollapsiblePanel is not null)
+                BrowserAgentControlCollapsiblePanel.Visibility = drawerVis;
+            if (_modernTakeWheelPillBorder is not null)
+            {
+                _modernTakeWheelPillBorder.Width = shouldShowDrawer ? double.NaN : 30;
+                _modernTakeWheelPillBorder.Padding = shouldShowDrawer
+                    ? new System.Windows.Thickness(5, 0, 5, 0)
+                    : new System.Windows.Thickness(0);
+            }
+            if (_modernAgentControlToggleBtn is not null)
+            {
+                _modernAgentControlToggleBtn.Width = shouldShowDrawer ? 24 : 28;
+                _modernAgentControlToggleBtn.Height = shouldShowDrawer ? 24 : 28;
+            }
+        }
+        catch { }
+    }
+
+    private void SyncLiveSpaUrlFromCoreWebView2(object coreWv)
+    {
+        try
+        {
+            string currentSrc = coreWv.GetType().GetProperty("Source")?.GetValue(coreWv) as string ?? string.Empty;
+            string docTitle = coreWv.GetType().GetProperty("DocumentTitle")?.GetValue(coreWv) as string ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(currentSrc) || !currentSrc.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var rt = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
+            rt.CurrentUrl = currentSrc;
+            if (!string.IsNullOrWhiteSpace(docTitle))
+                rt.CurrentPageTitle = docTitle;
+
+            if (DataContext is AgentWorkspaceViewModel awVm)
+            {
+                awVm.LastBrowserUrl = currentSrc;
+            }
+
+            string displayUrl = currentSrc;
+            if (!rt.AdGuardConfig.ShowFullUrlInAddressBar && Uri.TryCreate(currentSrc, UriKind.Absolute, out var parsedU))
+            {
+                displayUrl = parsedU.Host;
+            }
+            if (BrowserAddressBox is not null && !BrowserAddressBox.IsKeyboardFocused)
+            {
+                BrowserAddressBox.Text = displayUrl;
+            }
+
+            var activeTab = rt.OpenBrowserTabs.FirstOrDefault(t => t.TabId == rt.ActiveBrowserTabId);
+            if (activeTab is not null && !activeTab.IsInternalPage)
+            {
+                int idx = rt.OpenBrowserTabs.IndexOf(activeTab);
+                rt.OpenBrowserTabs[idx] = activeTab with
+                {
+                    Title = string.IsNullOrWhiteSpace(docTitle) ? activeTab.Title : docTitle,
+                    Url = currentSrc
+                };
+                RebuildMultiTabBrowserStrip();
+            }
+        }
+        catch { }
+    }
+
+    private async Task<bool> StopLiveWebView2NavigationAsync()
+    {
+        try
+        {
+            return await Dispatcher.InvokeAsync(() =>
+            {
+                if (_activeWebView2Control is null)
+                    return false;
+                var coreWv = _activeWebView2Control.GetType().GetProperty("CoreWebView2")?.GetValue(_activeWebView2Control);
+                if (coreWv is null)
+                    return false;
+                coreWv.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(coreWv, null);
+                SyncNavButtonsAndLoadingState(coreWv, false);
+                return true;
+            });
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void EnsureNewWindowInterceptorAttached()
@@ -4739,11 +5145,20 @@ public partial class AgentWorkspaceView : UserControl
                     Dispatcher.BeginInvoke(() => SyncNavButtonsAndLoadingState(coreWv, true));
                 });
 
+                _ = AttachCoreWebView2Event(coreWv, "SourceChanged", (s, a) =>
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        SyncLiveSpaUrlFromCoreWebView2(coreWv);
+                    });
+                });
+
                 _ = AttachCoreWebView2Event(coreWv, "HistoryChanged", (s, a) =>
                 {
                     Dispatcher.BeginInvoke(async () =>
                     {
                         SyncNavButtonsAndLoadingState(coreWv, _isWebViewCurrentlyLoading);
+                        SyncLiveSpaUrlFromCoreWebView2(coreWv);
                         RefreshAdGuardFlyoutState();
                         var rt = Nexus.App.Services.BrowserAgent.BrowserAgentRuntimeSettings.Current;
                         if (rt.IsAdGuardProtectionEnabled && !rt.IsDomainWhitelisted(GetCurrentBrowserHostDomain()))

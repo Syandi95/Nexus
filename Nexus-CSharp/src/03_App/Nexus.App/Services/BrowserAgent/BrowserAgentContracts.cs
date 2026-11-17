@@ -24,23 +24,27 @@ public sealed class BrowserAgentRuntimeSettings
     public bool AutoAllowReadAndNavigate { get; set; } = true;
     public bool RequireConfirmationForDownload { get; set; } = false;
     public bool RequireConfirmationForFormSubmit { get; set; } = true;
-    public int MaxActionsPerTask { get; set; } = 8;
-    public int MaxPagesPerTask { get; set; } = 5;
+    public int MaxActionsPerTask { get; set; } = 25;
+    public int MaxPagesPerTask { get; set; } = 12;
     public int MaxContextTokens { get; set; } = 1200;
-    public int NavigationTimeoutSeconds { get; set; } = 15;
-    public int TotalTaskTimeoutSeconds { get; set; } = 90;
+    public int NavigationTimeoutSeconds { get; set; } = 25;
+    public int TotalTaskTimeoutSeconds { get; set; } = 180;
     public int MaxRetries { get; set; } = 2;
     public string DefaultSearchProvider { get; set; } = "scholar";
     public string DownloadDirectory { get; set; } = Directory.Exists(@"D:\NEXUS")
         ? @"D:\NEXUS\nexus_data\downloads"
         : Path.Combine(Path.GetTempPath(), "nexus_downloads");
 
-    // Live Bridges to WebView2 UI Thread & Active LLM StepPlanner (v23)
+    // Live Bridges to WebView2 UI Thread & Active LLM StepPlanner (v23 + Batch B)
     public Func<string, Task<string>>? LiveJsEvaluator { get; set; }
     public Func<string, string, Task<string>>? LiveCdpCaller { get; set; }
     public Func<string, string, CancellationToken, Task<string>>? LiveLlmStepPlannerCaller { get; set; }
     public Action<string>? OpenUrlInRightPanelBrowser { get; set; }
     public Func<bool, Task>? ClearBrowserSessionHistoryAsync { get; set; }
+    public VerifiedCarryForwardStore CarryForward { get; } = new();
+    public Action<string>? ClipboardSetterOverride { get; set; }
+    public Action? CancelActiveAgentRunCallback { get; set; }
+    public Func<Task<bool>>? StopLiveWebView2NavigationCallback { get; set; }
     public bool AutoClearHistoryOnNewChat { get; set; } = false;
     public string AdGuardExtensionId { get; set; } = string.Empty;
     public string AdGuardPopupExtensionUrl { get; set; } = string.Empty;
@@ -60,6 +64,16 @@ public sealed class BrowserAgentRuntimeSettings
     public List<BrowserTabSessionItem> OpenBrowserTabs { get; } = new();
     public string ActiveBrowserTabId { get; set; } = string.Empty;
     public AdGuardPersistentConfig AdGuardConfig { get; private set; } = new();
+    public string HomePageUrl { get; set; } = "https://www.google.com";
+    public double LastCursorX { get; set; } = 420;
+    public double LastCursorY { get; set; } = 220;
+    public int ActiveLlamaServerPort { get; set; } = 8080;
+    public bool EnableGenericFastPath { get; set; } = true;
+    public bool EnableCompactDomPrompt { get; set; } = true;
+    public bool EnablePromptCache { get; set; } = true;
+    public bool EnableLocalModelThinking { get; set; } = false;
+    public bool AlwaysPierceCdpInBaselineMode { get; set; } = false;
+    public LlmInferenceTelemetry? LastStepInferenceTelemetry { get; set; }
     private bool _historyLoadedFromDisk;
     private bool _adGuardConfigLoadedFromDisk;
 
